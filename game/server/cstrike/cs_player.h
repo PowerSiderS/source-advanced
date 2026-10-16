@@ -490,6 +490,7 @@ public:
 
 	void Weapon_Equip( CBaseCombatWeapon *pWeapon );
 	virtual bool BumpWeapon( CBaseCombatWeapon *pWeapon );
+	bool BumpWeaponFromUse( CBaseCombatWeapon *pWeapon );
 	virtual bool Weapon_CanUse( CBaseCombatWeapon *pWeapon );
 
 	void ClearFlashbangScreenFade ( void );
@@ -525,6 +526,8 @@ public:
 
 
 private:
+	bool BumpWeaponInternal( CBaseCombatWeapon *pWeapon, bool bAllowSlotReplace );
+
 	void State_Enter( CSPlayerState newState );		// Initialize the new state.
 	void State_Leave();								// Cleanup the previous state.
 	void State_PreThink();							// Update the current state.

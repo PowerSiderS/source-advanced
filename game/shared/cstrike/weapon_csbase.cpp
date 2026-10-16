@@ -1652,6 +1652,12 @@ void CWeaponCSBase::DefaultTouch(CBaseEntity *pOther)
 		
 		if ( pPlayer )
 		{
+			CCSPlayer *pCSPlayer = ToCSPlayer( pPlayer );
+			if ( pCSPlayer && pCaller == pPlayer && ( pCSPlayer->m_afButtonPressed & IN_USE ) )
+			{
+				pCSPlayer->BumpWeaponFromUse( this );
+			}
+
 			m_OnPlayerUse.FireOutput( pActivator, pCaller );
 		}
 	}

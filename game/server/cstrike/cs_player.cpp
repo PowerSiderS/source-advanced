@@ -5782,6 +5782,28 @@ bool CCSPlayer::Weapon_CanUse( CBaseCombatWeapon *pBaseWeapon )
 
 bool CCSPlayer::BumpWeapon( CBaseCombatWeapon *pBaseWeapon )
 {
+	return BumpWeaponInternal( pBaseWeapon, false );
+}
+
+bool CCSPlayer::BumpWeaponFromUse( CBaseCombatWeapon *pWeapon )
+{
+	if ( !pWeapon || pWeapon->HasSpawnFlags( SF_WEAPON_NO_PLAYER_PICKUP ) )
+		return false;
+
+	if ( !BumpWeaponInternal( pWeapon, true ) )
+		return false;
+
+	pWeapon->OnPickedUp( this );
+
+	// A deliberate +use pickup should leave the newly acquired weapon in hand.
+	if ( pWeapon->GetOwner() == this )
+		Weapon_Switch( pWeapon );
+
+	return true;
+}
+
+bool CCSPlayer::BumpWeaponInternal( CBaseCombatWeapon *pBaseWeapon, bool bAllowSlotReplace )
+{
 	CWeaponCSBase *pWeapon = dynamic_cast< CWeaponCSBase* >( pBaseWeapon );
 	if ( !pWeapon )
 	{
@@ -5808,6 +5830,10 @@ bool CCSPlayer::BumpWeapon( CBaseCombatWeapon *pBaseWeapon )
 	// Even if we already have a grenade in this slot, we can pickup another one if we don't already
 	// own this type of grenade.
 	bool bPickupGrenade =  ( pWeapon->GetCSWpnData().m_WeaponType == WEAPONTYPE_GRENADE );
+	bool bSlotOccupied = Weapon_SlotOccupied( pWeapon );
+	bool bCanReplaceSlot = bAllowSlotReplace && bSlotOccupied &&
+		( pWeapon->GetSlot() == WEAPON_SLOT_RIFLE ||
+		  pWeapon->GetSlot() == WEAPON_SLOT_PISTOL );
 
 
 	/*
@@ -5854,7 +5880,7 @@ bool CCSPlayer::BumpWeapon( CBaseCombatWeapon *pBaseWeapon )
 		}
 	}
 
-	if( bPickupGrenade || !Weapon_SlotOccupied( pWeapon ) )
+	if( bPickupGrenade || !bSlotOccupied || bCanReplaceSlot )
 	{
 		pWeapon->CheckRespawn();
 
@@ -6727,12 +6753,7 @@ bool CCSPlayer::IsUseableEntity( CBaseEntity *pEntity, unsigned int requiredCaps
 
 	if( pCSWepaon )
 	{
-		// Cores: allow grenade drop and pickup
-		if ( pCSWepaon->GetCSWpnData().m_WeaponType == WEAPONTYPE_GRENADE || pCSWepaon->GetSlot() == WEAPON_SLOT_GRENADES )
-		{
-			BumpWeapon( pCSWepaon );
-			return true;
-		}
+		// Dropped weapons are +use targets. CWeaponCSBase::Use performs the pickup.
 		return true;
 	}
 

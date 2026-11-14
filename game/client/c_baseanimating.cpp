@@ -3918,6 +3918,26 @@ void C_BaseAnimating::FireEvent( const Vector& origin, const QAngle& angles, int
 		}
 		break;
 
+	case AE_CL_HIDE_SILENCER:
+		{
+			int index = FindBodygroupByName( "silencer" );
+			if ( index >= 0 )
+			{
+				SetBodygroup( index, 1 );
+			}
+		}
+		break;
+
+	case AE_CL_SHOW_SILENCER:
+		{
+			int index = FindBodygroupByName( "silencer" );
+			if ( index >= 0 )
+			{
+				SetBodygroup( index, 0 );
+			}
+		}
+		break;
+
 	case AE_CL_BODYGROUP_SET_VALUE:
 		{
 			char szBodygroupName[256];

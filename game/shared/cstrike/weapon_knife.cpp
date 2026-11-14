@@ -16,6 +16,10 @@
 	#include "cs_gamestats.h"
 #endif
 
+#if defined( CLIENT_DLL )
+ConVar cl_knife( "cl_knife", "0", FCVAR_ARCHIVE | FCVAR_USERINFO, "Knife viewmodel selection (0 = team default T/CT knife, 1-19 or knife name e.g. karambit, bayonet, m9, butterfly, skeleton)." );
+#endif
+
 
 #define	KNIFE_BODYHIT_VOLUME 128
 #define	KNIFE_WALLHIT_VOLUME 512
@@ -101,6 +105,7 @@ PRECACHE_WEAPON_REGISTER( weapon_knife );
 
 CKnife::CKnife()
 {
+	m_flNextKnifeCheckTime = 0.0f;
 }
 
 
@@ -119,10 +124,41 @@ void CKnife::Precache()
 {
 	BaseClass::Precache();
 
+	int nKnifeCount = GetKnifeViewModelCount();
+	for ( int i = 0; i < nKnifeCount; ++i )
+	{
+		const char *pszModel = GetKnifeViewModelByIndex( i );
+		if ( pszModel && pszModel[0] )
+		{
+			PrecacheModel( pszModel );
+		}
+	}
+
 	PrecacheScriptSound( "Weapon_Knife.Deploy" );
 	PrecacheScriptSound( "Weapon_Knife.Slash" );
 	PrecacheScriptSound( "Weapon_Knife.Stab" );
 	PrecacheScriptSound( "Weapon_Knife.Hit" );
+}
+
+const char *CKnife::GetViewModel( int viewmodelindex ) const
+{
+	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+	int nTeam = pOwner ? pOwner->GetTeamNumber() : TEAM_TERRORIST;
+	const char *pszKnifeChoice = "";
+
+#if defined( CLIENT_DLL )
+	if ( pOwner && pOwner->IsLocalPlayer() )
+	{
+		pszKnifeChoice = cl_knife.GetString();
+	}
+#else
+	if ( pOwner && !pOwner->IsBot() && pOwner->IsNetClient() )
+	{
+		pszKnifeChoice = engine->GetClientConVarValue( pOwner->entindex(), "cl_knife" );
+	}
+#endif
+
+	return GetKnifeViewModelForSelection( nTeam, pszKnifeChoice );
 }
 
 void CKnife::Spawn()
@@ -136,6 +172,12 @@ void CKnife::Spawn()
 
 bool CKnife::Deploy()
 {
+	const char *pszDesiredVM = GetViewModel( m_nViewModelIndex );
+	if ( pszDesiredVM && pszDesiredVM[0] )
+	{
+		SetModel( pszDesiredVM );
+	}
+
 	CPASAttenuationFilter filter( this );
 	filter.UsePredictionRules();
 	EmitSound( filter, entindex(), "Weapon_Knife.Deploy" );
@@ -505,6 +547,25 @@ void CKnife::ItemPostFrame( void )
 		Smack();
 		m_flSmackTime = -1;
 	}
+
+#if !defined( CLIENT_DLL )
+	if ( gpGlobals->curtime >= m_flNextKnifeCheckTime )
+	{
+		m_flNextKnifeCheckTime = gpGlobals->curtime + 0.2f;
+		CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+		if ( pOwner && !pOwner->IsBot() && pOwner->GetActiveWeapon() == this )
+		{
+			CBaseViewModel *pVM = pOwner->GetViewModel( m_nViewModelIndex, false );
+			const char *pszDesiredVM = GetViewModel( m_nViewModelIndex );
+			if ( pVM && pszDesiredVM && pVM->GetModelIndex() != modelinfo->GetModelIndex( pszDesiredVM ) )
+			{
+				SetModel( pszDesiredVM );
+				SetViewModel();
+				SendWeaponAnim( GetDeployActivity() );
+			}
+		}
+	}
+#endif
 
 	BaseClass::ItemPostFrame();
 }

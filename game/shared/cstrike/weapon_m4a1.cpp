@@ -83,6 +83,10 @@ BEGIN_NETWORK_TABLE( CWeaponM4A1, DT_WeaponM4A1 )
 END_NETWORK_TABLE()
 
 BEGIN_PREDICTION_DATA( CWeaponM4A1 )
+#ifdef CLIENT_DLL
+	DEFINE_PRED_FIELD( m_bSilencerOn, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_FIELD( m_flDoneSwitchingSilencer, FIELD_FLOAT, FTYPEDESC_INSENDTABLE ),
+#endif
 END_PREDICTION_DATA()
 
 LINK_ENTITY_TO_CLASS( weapon_m4a1, CWeaponM4A1 );
@@ -152,6 +156,11 @@ bool CWeaponM4A1::Deploy()
 	m_flDoneSwitchingSilencer = 0.0f;
 	m_bDelayFire = true;
 
+	if ( ret )
+	{
+		SyncSilencerBodygroup();
+	}
+
 	return ret;
 }
 
@@ -159,7 +168,7 @@ Activity CWeaponM4A1::GetDeployActivity( void )
 {
 	if( IsSilenced() )
 	{
-		return ACT_VM_DRAW_SILENCED;
+		return SelectSilencedActivity( ACT_VM_DRAW_SILENCED, ACT_VM_DRAW );
 	}
 	else
 	{
@@ -256,8 +265,11 @@ void CWeaponM4A1::PrimaryAttack()
 	if ( !CSBaseGunFire( GetCSWpnData().m_flCycleTime[m_weaponMode], m_weaponMode ) )
 		return;
 
-	if ( m_bSilencerOn )
-		 SendWeaponAnim( ACT_VM_PRIMARYATTACK_SILENCED );
+	if ( !IsSwitchingSilencer() )
+		SyncSilencerBodygroup();
+
+	if ( m_bSilencerOn && SelectWeightedSequence( ACT_VM_PRIMARYATTACK_SILENCED ) != ACTIVITY_NOT_AVAILABLE )
+		SendWeaponAnim( ACT_VM_PRIMARYATTACK_SILENCED );
 
 	pPlayer = GetPlayerOwner();
 
@@ -289,15 +301,14 @@ bool CWeaponM4A1::Reload()
 	if (pPlayer->GetAmmoCount( GetPrimaryAmmoType() ) <= 0)
 		return false;
 
-	int iResult = 0;
-	
-	if ( m_bSilencerOn )
-		 iResult = DefaultReload( GetMaxClip1(), GetMaxClip2(), ACT_VM_RELOAD_SILENCED );
-	else
-		 iResult = DefaultReload( GetMaxClip1(), GetMaxClip2(), ACT_VM_RELOAD );
+	Activity iReloadAct = m_bSilencerOn ? SelectSilencedActivity( ACT_VM_RELOAD_SILENCED, ACT_VM_RELOAD ) : ACT_VM_RELOAD;
+	int iResult = DefaultReload( GetMaxClip1(), GetMaxClip2(), iReloadAct );
 
 	if ( !iResult )
 		return false;
+
+	if ( !IsSwitchingSilencer() )
+		SyncSilencerBodygroup();
 
 	pPlayer->SetAnimation( PLAYER_RELOAD );
 
@@ -322,10 +333,10 @@ void CWeaponM4A1::WeaponIdle()
 	if ( m_iClip1 != 0 )
 	{
 		SetWeaponIdleTime( gpGlobals->curtime + GetCSWpnData().m_flIdleInterval );
-		if ( m_bSilencerOn )
-			SendWeaponAnim( ACT_VM_IDLE_SILENCED );
-		else
-			SendWeaponAnim( ACT_VM_IDLE );
+		if ( !IsSwitchingSilencer() )
+			SyncSilencerBodygroup();
+
+		SendWeaponAnim( m_bSilencerOn ? SelectSilencedActivity( ACT_VM_IDLE_SILENCED, ACT_VM_IDLE ) : ACT_VM_IDLE );
 	}
 }
 

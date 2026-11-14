@@ -561,18 +561,46 @@ void CWeaponCSBase::SecondaryAttack( void )
 
 #endif
 
-#ifndef CLIENT_DLL
- // firing or reloading should interrupt weapon inspection
- 	if ( iActivity == ACT_VM_PRIMARYATTACK || iActivity == ACT_VM_RELOAD || iActivity == ACT_SECONDARY_VM_RELOAD || iActivity == ACT_VM_ATTACH_SILENCER || iActivity == ACT_VM_DETACH_SILENCER )
- 	{
- 	 if ( CCSPlayer *pPlayer = GetPlayerOwner() )
- 		{
-  			pPlayer->StopLookingAtWeapon();
- 		}
+	// firing, drawing, reloading, or toggling silencer should interrupt weapon inspection
+	if ( iActivity == ACT_VM_DRAW || iActivity == ACT_VM_DRAW_SILENCED ||
+		 iActivity == ACT_VM_PRIMARYATTACK || iActivity == ACT_VM_PRIMARYATTACK_SILENCED ||
+		 iActivity == ACT_VM_HITCENTER || iActivity == ACT_VM_MISSCENTER ||
+		 iActivity == ACT_VM_RELOAD || iActivity == ACT_VM_RELOAD_SILENCED ||
+		 iActivity == ACT_SECONDARY_VM_RELOAD ||
+		 iActivity == ACT_VM_ATTACH_SILENCER || iActivity == ACT_VM_DETACH_SILENCER )
+	{
+		if ( CCSPlayer *pPlayer = GetPlayerOwner() )
+		{
+			pPlayer->StopLookingAtWeapon();
+		}
 	}
-#endif
 
 	return BaseClass::SendWeaponAnim( iActivity );
+}
+
+Activity CWeaponCSBase::SelectSilencedActivity( Activity silencedAct, Activity unsilencedAct )
+{
+	if ( SelectWeightedSequence( silencedAct ) != ACTIVITY_NOT_AVAILABLE )
+		return silencedAct;
+
+	return unsilencedAct;
+}
+
+void CWeaponCSBase::SyncSilencerBodygroup( void )
+{
+	CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+	if ( !pOwner )
+		return;
+
+	CBaseViewModel *vm = pOwner->GetViewModel( m_nViewModelIndex, false );
+	if ( !vm )
+		return;
+
+	int nSilencerGroup = vm->FindBodygroupByName( "silencer" );
+	if ( nSilencerGroup >= 0 )
+	{
+		vm->SetBodygroup( nSilencerGroup, IsSilenced() ? 0 : 1 );
+	}
 }
 
 void CWeaponCSBase::SendViewModelAnim( int nSequence )
@@ -1736,6 +1764,24 @@ void CWeaponCSBase::DefaultTouch(CBaseEntity *pOther)
 		for ( int iGroup = 1; iGroup < iNumBodygroupIndices; iGroup++ )
 		{
 		vm->SetBodygroup( iGroup, (iNextClip >= iGroup) ? 0 : 1 );
+		}
+		}
+		}
+
+		return;
+		}
+		else if ( nEvent == AE_CL_HIDE_SILENCER || nEvent == AE_CL_SHOW_SILENCER )
+		{
+		CBasePlayer *pOwner = ToBasePlayer( GetPlayerOwner() );
+		if ( pOwner )
+		{
+		CBaseViewModel *vm = pOwner->GetViewModel( m_nViewModelIndex );
+		if ( vm )
+		{
+		int index = vm->FindBodygroupByName( "silencer" );
+		if ( index >= 0 )
+		{
+		vm->SetBodygroup( index, ( nEvent == AE_CL_HIDE_SILENCER ) ? 1 : 0 );
 		}
 		}
 		}

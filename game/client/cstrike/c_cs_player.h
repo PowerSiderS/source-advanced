@@ -33,6 +33,8 @@ public:
 
 
 
+struct PlayerViewmodelArmConfig;
+
 class C_CSPlayer : public C_BasePlayer, public ICSPlayerAnimStateHelpers
 {
 public:
@@ -132,6 +134,7 @@ public:
 
 	virtual bool IsLookingAtWeapon( void ) const { return m_bIsLookingAtWeapon; }
 	virtual bool IsHoldingLookAtWeapon( void ) const { return m_bIsHoldingLookAtWeapon; }
+	virtual void StopLookingAtWeapon( void ) { m_bIsLookingAtWeapon = false; m_bIsHoldingLookAtWeapon = false; }
 
 	virtual bool ShouldReceiveProjectedTextures( int flags )
 	{
@@ -218,6 +221,8 @@ public:
 	Activity GetActivity( void ) const;
 
 	ICSPlayerAnimState *GetPlayerAnimState() { return m_PlayerAnimState; }
+
+	const PlayerViewmodelArmConfig *m_pViewmodelArmConfig;
 
 public:
 

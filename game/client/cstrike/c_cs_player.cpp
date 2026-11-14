@@ -809,6 +809,7 @@ C_CSPlayer::C_CSPlayer() :
 	m_iv_angEyeAngles( "C_CSPlayer::m_iv_angEyeAngles" )
 {
 	m_PlayerAnimState = CreatePlayerAnimState( this, this, LEGANIM_9WAY, true );
+	m_pViewmodelArmConfig = NULL;
 
 	m_angEyeAngles.Init();
 
@@ -846,6 +847,15 @@ C_CSPlayer::~C_CSPlayer()
 	ReleaseFlashlight();
 
 	m_PlayerAnimState->Release();
+
+	for ( int i = 0; i < MAX_VIEWMODELS; ++i )
+	{
+		C_BaseViewModel *pViewModel = assert_cast<C_BaseViewModel *>( GetViewModel( i ) );
+		if ( pViewModel )
+		{
+			pViewModel->RemoveViewmodelArmModels();
+		}
+	}
 }
 
 
@@ -1753,6 +1763,30 @@ void C_CSPlayer::UpdateClientSideAnimation()
 	{
 		// latch old values
 		OnLatchInterpolatedVariables( LATCH_ANIMATION_VAR );
+	}
+
+	if ( IsLocalPlayer() )
+	{
+		CWeaponCSBase *pWeapon = GetActiveCSWeapon();
+		if ( pWeapon )
+		{
+			C_BaseViewModel *pViewModel = assert_cast<C_BaseViewModel *>( GetViewModel( pWeapon->m_nViewModelIndex ) );
+			if ( pViewModel )
+			{
+				pViewModel->UpdateAllViewmodelAddons();
+			}
+		}
+		else
+		{
+			for ( int i = 0; i < MAX_VIEWMODELS; ++i )
+			{
+				C_BaseViewModel *pViewModel = assert_cast<C_BaseViewModel *>( GetViewModel( i ) );
+				if ( pViewModel )
+				{
+					pViewModel->RemoveViewmodelArmModels();
+				}
+			}
+		}
 	}
 }
 

@@ -91,6 +91,11 @@ typedef enum
 	AE_CL_BODYGROUP_SET_TO_CLIP,  // set viewmodel bullet bodygroup to the current clip count
 	AE_CL_BODYGROUP_SET_TO_NEXTCLIP, // set viewmodel bullet bodygroup to the next clip count
 
+	AE_CL_HIDE_SILENCER,
+	AE_CL_SHOW_SILENCER,
+	AE_CL_ATTACH_SILENCER_COMPLETE,
+	AE_CL_DETACH_SILENCER_COMPLETE,
+
 	LAST_SHARED_ANIMEVENT,
 } Animevent;
 

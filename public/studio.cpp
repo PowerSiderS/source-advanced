@@ -1859,3 +1859,15 @@ void CStudioHdr::CActivityToSequenceMapping::SetValidationPair( const CStudioHdr
 	m_expectedPStudioHdr = pstudiohdr->GetRenderHdr();
 	m_expectedVModel = pstudiohdr->GetVirtualModel();
 }
+
+void CStudioHdr::setBoneFlags( int iBone, int flags )
+{
+	Assert( iBone >= 0 && iBone < numbones() );
+	((mstudiobone_t *)pBone( iBone ))->flags |= flags;
+	mstudiolinearbone_t *pLinear = pLinearBones();
+	if ( pLinear )
+	{
+		*(pLinear->pflags( iBone )) |= flags;
+	}
+	m_boneFlags[iBone] |= flags;
+}

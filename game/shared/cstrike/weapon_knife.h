@@ -45,6 +45,8 @@ public:
 	
 	virtual void Precache();
 
+	virtual const char *GetViewModel( int viewmodelindex = 0 ) const;
+
 	void Spawn();
 	void Smack();
 	//void Smack( trace_t *pTr, float delay );
@@ -72,6 +74,7 @@ public:
 
 	CNetworkVar( float, m_flSmackTime );
 	bool	m_bStab;
+	float	m_flNextKnifeCheckTime;
 
 private:
 	CKnife( const CKnife & ) {}

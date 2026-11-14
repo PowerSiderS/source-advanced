@@ -22,6 +22,7 @@ class CBaseCombatCharacter;
 class CVGuiScreen;
 
 #if defined( CLIENT_DLL )
+class C_ViewmodelAttachmentModel;
 #define CBaseViewModel C_BaseViewModel
 #define CBaseCombatWeapon C_BaseCombatWeapon
 #endif
@@ -174,6 +175,10 @@ public:
 	virtual bool			GetAttachment( int number, Vector &origin );
 	virtual	bool			GetAttachment( int number, Vector &origin, QAngle &angles );
 	virtual bool			GetAttachmentVelocity( int number, Vector &originVel, Quaternion &angleVel );
+
+	void					UpdateAllViewmodelAddons( void );
+	void					AddViewmodelArmModel( const char *pszModel, int nSkintoneIndex = 0, bool bHideBareArms = false, const char *pszOverrideBaseTexture = NULL );
+	void					RemoveViewmodelArmModels( void );
 #endif
 
 private:
@@ -213,6 +218,44 @@ public:
 	// Control panel
 	typedef CHandle<CVGuiScreen>	ScreenHandle_t;
 	CUtlVector<ScreenHandle_t>	m_hScreens;
+
+#ifdef CLIENT_DLL
+	CUtlVector< CHandle< C_ViewmodelAttachmentModel > > m_vecViewmodelArmModels;
+	char						m_szLastArmPlayerModel[MAX_PATH];
+	char						m_szLastGloveConVar[MAX_PATH];
+	char						m_szLastGloveOverrideTex[MAX_PATH];
+	char						m_szLastSleeveConVar[MAX_PATH];
+	int							m_nLastSkintone;
+#endif
 };
+
+#ifdef CLIENT_DLL
+class ITexture;
+
+class C_ViewmodelAttachmentModel : public C_BaseAnimating
+{
+	DECLARE_CLASS( C_ViewmodelAttachmentModel, C_BaseAnimating );
+public:
+	C_ViewmodelAttachmentModel();
+	~C_ViewmodelAttachmentModel();
+	bool InitializeAsClientEntity( const char *pszModelName, RenderGroup_t renderGroup );
+	bool InitializeArmModel( const char *pszModelName, int nSkintoneIndex, bool bHideBareArms, const char *pszOverrideBaseTexture = NULL );
+	void SetViewmodel( C_BaseViewModel *pVM );
+	void SetOverrideBaseTexture( const char *pszTexturePath );
+	ITexture *GetOverrideBaseTexture( void ) const { return m_pOverrideBaseTexture; }
+	virtual CStudioHdr *OnNewModel( void );
+	virtual int InternalDrawModel( int flags );
+	virtual bool IsViewModelOrAttachment() const { return true; }
+	virtual bool UsesPowerOfTwoFrameBufferTexture( void ) { return false; }
+
+private:
+	void ApplyArmAppearance( void );
+
+	CHandle< C_BaseViewModel > m_hViewmodel;
+	ITexture *m_pOverrideBaseTexture;
+	int m_nPendingSkintone;
+	bool m_bPendingHideBareArms;
+};
+#endif
 
 #endif // BASEVIEWMODEL_SHARED_H

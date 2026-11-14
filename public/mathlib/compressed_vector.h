@@ -237,6 +237,49 @@ inline Quaternion48& Quaternion48::operator=(const Quaternion &vOther)
 }
 
 //=========================================================
+// 48 bit smallest-three Quaternion (used by STUDIO_FRAMEANIM)
+//=========================================================
+
+class Quaternion48S
+{
+public:
+	Quaternion48S(void) = default;
+	operator Quaternion ();
+
+private:
+	unsigned short a : 15;
+	unsigned short offsetH : 1;
+	unsigned short b : 15;
+	unsigned short offsetL : 1;
+	unsigned short c : 15;
+	unsigned short wneg : 1;
+};
+
+inline Quaternion48S::operator Quaternion ()
+{
+	Quaternion tmp;
+
+	// Scale maps [-16384..16383] into [-1/sqrt(2)..+1/sqrt(2)]
+	const float scale = ( 1.0f / 1.41421356237f ) * ( 1.0f / 16384.0f );
+	float fa = ((int)a - 16384) * scale;
+	float fb = ((int)b - 16384) * scale;
+	float fc = ((int)c - 16384) * scale;
+	float fd = sqrtf( Max( 0.0f, 1.0f - fa * fa - fb * fb - fc * fc ) );
+	if ( wneg )
+	{
+		fd = -fd;
+	}
+
+	// Control bits store (droppedComponent + 1) & 3 so identity maps to 0
+	int iMissing = ( ( ((int)offsetH << 1) | (int)offsetL ) - 1 ) & 3;
+	tmp[iMissing] = fd;
+	tmp[(iMissing + 1) & 3] = fa;
+	tmp[(iMissing + 2) & 3] = fb;
+	tmp[(iMissing + 3) & 3] = fc;
+	return tmp;
+}
+
+//=========================================================
 // 32 bit Quaternion
 //=========================================================
 

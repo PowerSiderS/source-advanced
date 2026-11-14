@@ -179,6 +179,9 @@ public:
 	// return true while the player is installing/uninstalling the silencer
 	virtual bool IsSwitchingSilencer( void ) const	{ return false; }
 
+	Activity		SelectSilencedActivity( Activity silencedAct, Activity unsilencedAct );
+	void			SyncSilencerBodygroup( void );
+
 	// shotgun per-shell reload state (0 = not reloading)
 	virtual int GetShotgunReloadState( void ) const	{ return 0; }
 

@@ -76,6 +76,7 @@ void CBoneMergeCache::UpdateCache()
 			memset( m_BoneMergeBits.Base(), 0, m_BoneMergeBits.Count() );
 
 			mstudiobone_t *pOwnerBones = m_pOwnerHdr->pBone( 0 );
+			bool bFollowFlagsChanged = false;
 			
 			m_nFollowBoneSetupMask = BONE_USED_BY_BONE_MERGE;
 			for ( int i = 0; i < m_pOwnerHdr->numbones(); i++ )
@@ -94,10 +95,26 @@ void CBoneMergeCache::UpdateCache()
 
 				if ( ( m_pFollowHdr->boneFlags( parentBoneIndex ) & BONE_USED_BY_BONE_MERGE ) == 0 )
 				{
-					m_nFollowBoneSetupMask = BONE_USED_BY_ANYTHING;
-//					Warning("Performance warning: Merge with '%s'. Mark bone '%s' in model '%s' as being used by bone merge in the .qc!\n",
-//						pOwnerHdr->pszName(), m_pFollowHdr->pBone( parentBoneIndex )->pszName(), m_pFollowHdr->pszName() ); 
+					// Mark matched bone and its ancestor chain so weapons authored without bone_merge flags compute them.
+					for ( int n = parentBoneIndex; n != -1; n = m_pFollowHdr->boneParent( n ) )
+					{
+						m_pFollowHdr->setBoneFlags( n, BONE_USED_BY_BONE_MERGE );
+					}
+					bFollowFlagsChanged = true;
 				}
+
+				if ( ( m_pOwnerHdr->boneFlags( i ) & BONE_USED_BY_BONE_MERGE ) == 0 )
+				{
+					for ( int n = i; n != -1; n = m_pOwnerHdr->boneParent( n ) )
+					{
+						m_pOwnerHdr->setBoneFlags( n, BONE_USED_BY_BONE_MERGE );
+					}
+				}
+			}
+
+			if ( bFollowFlagsChanged )
+			{
+				m_pFollow->InvalidateBoneCache();
 			}
 
 			// No merged bones found? Slam the mask to 0

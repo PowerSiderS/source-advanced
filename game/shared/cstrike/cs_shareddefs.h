@@ -268,4 +268,44 @@ const CCSClassInfo* GetCSClassInfo( int i );
 
 extern const char *pszWinPanelCategoryHeaders[];
 
+enum PlayerViewmodelSkinTone
+{
+	BARE_ARM_133 = 0,
+	BARE_ARM_55,
+	BARE_ARM_66,
+	BARE_ARM_103,
+	BARE_ARM_78,
+	BARE_ARM_PRO_VARF,
+	BARE_ARM_135,
+	BARE_ARM_44,
+};
+
+struct PlayerViewmodelArmConfig
+{
+	const char	*szPlayerModelSearchSubStr;
+	int			 iSkintoneIndex;
+	const char	*szAssociatedGloveModel;
+	const char	*szAssociatedSleeveModel;
+	bool		 bHideBareArms;
+};
+
+struct ArmGloveSelection
+{
+	const char	*pszModelPath;
+	const char	*pszOverrideBaseTexture;
+};
+
+typedef int (*FnGetGloveSkinValue)( const char *pszFamilyKey, char *pszOutStr, int nOutStrSize );
+
+const PlayerViewmodelArmConfig *GetPlayerViewmodelArmConfigForPlayerModel( const char *szPlayerModel );
+int GetViewmodelArmConfigCount( void );
+const PlayerViewmodelArmConfig *GetViewmodelArmConfig( int i );
+bool ResolveViewmodelGloveSelection( const char *pszGloveInput, FnGetGloveSkinValue pfnGetSkin, ArmGloveSelection &outSelection );
+const char *ResolveViewmodelGloveModelPath( const char *pszInput, char *pszOut, int nOutSize );
+const char *ResolveViewmodelSleeveModelPath( const char *pszInput, char *pszOut, int nOutSize );
+
+const char *GetKnifeViewModelForSelection( int nTeam, const char *pszKnifeInput );
+int GetKnifeViewModelCount( void );
+const char *GetKnifeViewModelByIndex( int i );
+
 #endif // CS_SHAREDDEFS_H

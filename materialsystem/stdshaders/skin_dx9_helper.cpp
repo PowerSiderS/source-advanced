@@ -115,6 +115,12 @@ void InitParamsSkin_DX9( CBaseVSShader *pShader, IMaterialVar** params, const ch
 	{
 		params[info.m_nEnvmapFresnel]->SetFloatValue( 0 );
 	}
+
+	// Respect mat_specular 0 (InitParamsVertexLitGeneric_DX9 returns early for Skin materials).
+	if ( !g_pConfig->UseSpecular() && info.m_nEnvmap != -1 && params[info.m_nEnvmap]->IsDefined() && params[info.m_nBaseTexture]->IsDefined() )
+	{
+		params[info.m_nEnvmap]->SetUndefined();
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -281,12 +287,15 @@ void DrawSkin_DX9_Internal( CBaseVSShader *pShader, IMaterialVar** params, IShad
 		*pContextDataPtr = pContextData;
 	}
 
+	const bool bHasEnvmap = !bHasFlashlight && (info.m_nEnvmap != -1) && params[info.m_nEnvmap]->IsTexture() &&
+		( g_pConfig->UseSpecular() || !bHasBaseTexture );
+
 	if( pShader->IsSnapshotting() )
 	{
 		// look at color and alphamod stuff.
 		// Unlit generic never uses the flashlight
-		bool bHasEnvmap = !bHasFlashlight && params[info.m_nEnvmap]->IsTexture();
-		bool bHasNormal = params[info.m_nBumpmap]->IsTexture();
+		// skin_vs20 always reads v.vNormal (even without $bumpmap or with mat_bumpmap 0).
+		const bool bHasNormal = true;
 		bool bCanUseBaseAlphaPhongMaskFastPath = (info.m_nBaseMapAlphaPhongMask != -1) && ( params[info.m_nBaseMapAlphaPhongMask]->GetIntValue() != 0 );
 
 		if ( ! ( params[info.m_nBaseTexture]->GetTextureValue()->IsTranslucent() ) )
@@ -515,7 +524,6 @@ void DrawSkin_DX9_Internal( CBaseVSShader *pShader, IMaterialVar** params, IShad
 	else // not snapshotting -- begin dynamic state
 	{
 		bool bLightingOnly = mat_fullbright.GetInt() == 2 && !IS_FLAG_SET( MATERIAL_VAR_NO_DEBUG_OVERRIDE );
-		bool bHasEnvmap = !bHasFlashlight && params[info.m_nEnvmap]->IsTexture();
 
 		if( bHasBaseTexture )
 		{

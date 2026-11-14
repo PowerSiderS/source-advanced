@@ -89,6 +89,7 @@ END_NETWORK_TABLE()
 #ifdef CLIENT_DLL
 BEGIN_PREDICTION_DATA( CWeaponUSP )
 	DEFINE_PRED_FIELD( m_bSilencerOn, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_FIELD( m_flDoneSwitchingSilencer, FIELD_FLOAT, FTYPEDESC_INSENDTABLE ),
 	DEFINE_FIELD( m_flLastFire, FIELD_FLOAT ),
 END_PREDICTION_DATA()
 #endif
@@ -169,7 +170,13 @@ bool CWeaponUSP::Deploy()
 	m_flAccuracy = 0.92;
 	m_flDoneSwitchingSilencer = 0.0f;
 
-	return BaseClass::Deploy();
+	bool ret = BaseClass::Deploy();
+	if ( ret )
+	{
+		SyncSilencerBodygroup();
+	}
+
+	return ret;
 }
 
 bool CWeaponUSP::Holster( CBaseCombatWeapon *pSwitchingTo )
@@ -202,7 +209,7 @@ Activity CWeaponUSP::GetDeployActivity( void )
 {
 	if( IsSilenced() )
 	{
-		return ACT_VM_DRAW_SILENCED;
+		return SelectSilencedActivity( ACT_VM_DRAW_SILENCED, ACT_VM_DRAW );
 	}
 	else
 	{
@@ -304,6 +311,9 @@ void CWeaponUSP::PrimaryAttack()
 
 	m_iClip1--;
 
+	if ( !IsSwitchingSilencer() )
+		SyncSilencerBodygroup();
+
 	SendWeaponAnim( ACT_VM_PRIMARYATTACK );
 
 	// player "shoot" animation
@@ -347,6 +357,9 @@ bool CWeaponUSP::Reload()
 	if ( !DefaultPistolReload() )
 		return false;
 	
+	if ( !IsSwitchingSilencer() )
+		SyncSilencerBodygroup();
+
 	m_flAccuracy = 0.92;
 	return true;
 }
@@ -365,14 +378,17 @@ void CWeaponUSP::WeaponIdle()
 
 bool CWeaponUSP::SendWeaponAnim( int iActivity )
 {
-	// Translate the activity?
+	// Translate the activity only when the current viewmodel supports the silenced sequence
 	if ( m_bSilencerOn )
 	{
 		for ( int i=0; i < ARRAYSIZE( g_SilencedTranslations ); i++ )
 		{
 			if ( g_SilencedTranslations[i][0] == iActivity )
 			{
-				iActivity = g_SilencedTranslations[i][1];
+				if ( SelectWeightedSequence( g_SilencedTranslations[i][1] ) != ACTIVITY_NOT_AVAILABLE )
+				{
+					iActivity = g_SilencedTranslations[i][1];
+				}
 				break;
 			}
 		}

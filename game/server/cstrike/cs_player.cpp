@@ -630,6 +630,20 @@ void CCSPlayer::Precache()
 	PrecacheModel ( "sprites/glow01.vmt" );
 	PrecacheModel ( "models/items/cs_gift.mdl" );
 
+	PrecacheModel( "models/advanced_inventory_csgo_items/weapons/v_models/arms/bare/v_bare_hands.mdl" );
+	for ( i = 0; i < GetViewmodelArmConfigCount(); ++i )
+	{
+		const PlayerViewmodelArmConfig *pArmCfg = GetViewmodelArmConfig( i );
+		if ( pArmCfg->szAssociatedGloveModel && pArmCfg->szAssociatedGloveModel[0] )
+		{
+			PrecacheModel( pArmCfg->szAssociatedGloveModel );
+		}
+		if ( pArmCfg->szAssociatedSleeveModel && pArmCfg->szAssociatedSleeveModel[0] )
+		{
+			PrecacheModel( pArmCfg->szAssociatedSleeveModel );
+		}
+	}
+
 	BaseClass::Precache();
 }
 
@@ -4756,7 +4770,13 @@ void CCSPlayer::LookAtHeldWeapon( void )
 		nSequence = pViewModel->LookupSequence( "lookat01_silenced" );
 
 		if ( nSequence == ACT_INVALID || nSequence == ACTIVITY_NOT_AVAILABLE )
-		nSequence = pViewModel->LookupSequence( "lookat01" );
+		{
+			if ( !bSilencedInspect )
+				nSequence = pViewModel->SelectWeightedSequence( ACT_VM_IDLE_LOWERED );
+
+			if ( nSequence == ACT_INVALID || nSequence == ACTIVITY_NOT_AVAILABLE )
+				nSequence = pViewModel->LookupSequence( "lookat01" );
+		}
 
 		if ( nSequence != ACTIVITY_NOT_AVAILABLE && nSequence != ACT_INVALID )
 		{

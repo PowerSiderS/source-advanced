@@ -48,6 +48,11 @@ CBaseViewModel::CBaseViewModel()
 	m_nOldAnimationParity = 0;
 	m_fCycleOffset = 0.0f;
 	m_EntClientFlags |= ENTCLIENTFLAG_ALWAYS_INTERPOLATE;
+	m_szLastArmPlayerModel[0] = '\0';
+	m_szLastGloveConVar[0] = '\0';
+	m_szLastGloveOverrideTex[0] = '\0';
+	m_szLastSleeveConVar[0] = '\0';
+	m_nLastSkintone = -1;
 #endif
 	SetRenderColor( 255, 255, 255, 255 );
 
@@ -73,6 +78,10 @@ CBaseViewModel::~CBaseViewModel()
 void CBaseViewModel::UpdateOnRemove( void )
 {
 	BaseClass::UpdateOnRemove();
+
+#if defined( CLIENT_DLL )
+	RemoveViewmodelArmModels();
+#endif
 
 	DestroyControlPanels();
 }

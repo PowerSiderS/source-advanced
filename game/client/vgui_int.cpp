@@ -24,6 +24,9 @@
 #include "filesystem.h"
 #include "touch.h"
 #include "matsys_controls/matsyscontrols.h"
+#ifdef CSTRIKE_DLL
+#include "cstrikeinventory.h"
+#endif
 
 #ifdef SIXENSE
 #include "sixense/in_sixense.h"
@@ -225,10 +228,16 @@ void VGui_CreateGlobalPanels( void )
 #ifdef SIXENSE
 	g_pSixenseInput->CreateGUI( gameToolParent );
 #endif
+#ifdef CSTRIKE_DLL
+	CSInventory_Init();
+#endif
 }
 
 void VGui_Shutdown()
 {
+#ifdef CSTRIKE_DLL
+	CSInventory_Shutdown();
+#endif
 	VGUI_DestroyClientDLLRootPanel();
 
 #ifndef _X360

@@ -25,6 +25,7 @@
 #ifdef CSTRIKE_DLL
 	#include "cs_shareddefs.h"
 	#include "c_cs_player.h"
+	#include "cs_inventory.h"
 #endif
 
 #if defined( REPLAY_ENABLED )
@@ -54,11 +55,6 @@
 	ConVar cl_arm_glove_brokenfang( "cl_arm_glove_brokenfang", "0", FCVAR_ARCHIVE, "Broken Fang glove skin (0 = default, 1-4 or skin name)." );
 	ConVar cl_arm_sleeve( "cl_arm_sleeve", "-1", FCVAR_ARCHIVE, "CS:GO viewmodel sleeve (-1 = faction default, 0/none = no sleeve, 1-50 or alias/.mdl path)." );
 	ConVar cl_arm_skintone( "cl_arm_skintone", "-1", FCVAR_ARCHIVE, "Override bare-arm skintone skin index (0-7). -1 = faction default." );
-	ConVar cl_ak47_skin( "cl_ak47_skin", "0", FCVAR_ARCHIVE, "AK-47 skin selection (0 = default, 1-34 or skin name e.g. bloodsport, vulcan, asiimov, redline, fireserpent)." );
-	ConVar cl_ak47_sticker_1( "cl_ak47_sticker_1", "0", FCVAR_ARCHIVE, "AK-47 sticker slot 1 (0 = none, 1-40 or sticker name e.g. ibuypower, titan, crown, howling_dawn)." );
-	ConVar cl_ak47_sticker_2( "cl_ak47_sticker_2", "0", FCVAR_ARCHIVE, "AK-47 sticker slot 2 (0 = none, 1-40 or sticker name)." );
-	ConVar cl_ak47_sticker_3( "cl_ak47_sticker_3", "0", FCVAR_ARCHIVE, "AK-47 sticker slot 3 (0 = none, 1-40 or sticker name)." );
-	ConVar cl_ak47_sticker_4( "cl_ak47_sticker_4", "0", FCVAR_ARCHIVE, "AK-47 sticker slot 4 (0 = none, 1-40 or sticker name)." );
 
 	static void UpdateViewmodelStickers( C_BaseViewModel *pVM, C_CSPlayer *pPlayer );
 	static void RemoveViewmodelStickers( C_BaseViewModel *pVM );
@@ -590,6 +586,8 @@ void C_BaseViewModel::UpdateAllViewmodelAddons( void )
 		return;
 	}
 
+	Inventory_SyncActiveTeamConVars( pPlayer->GetTeamNumber() );
+
 	UpdateViewmodelStickers( this, pPlayer );
 
 	const model_t *pPlayerModel = pPlayer->GetModel();
@@ -843,7 +841,7 @@ int C_ViewmodelAttachmentModel::InternalDrawModel( int flags )
 	return r;
 }
 
-class CArmSkinTextureProxy : public CEntityMaterialProxy
+class CArmSkinTextureProxy : public IMaterialProxy
 {
 public:
 	CArmSkinTextureProxy() : m_pBaseTextureVar( NULL ), m_pDefaultTexture( NULL ) {}
@@ -854,6 +852,11 @@ public:
 			m_pDefaultTexture->DecrementReferenceCount();
 			m_pDefaultTexture = NULL;
 		}
+	}
+
+	virtual void Release()
+	{
+		delete this;
 	}
 
 	virtual bool Init( IMaterial *pMaterial, KeyValues *pKeyValues )
@@ -874,7 +877,7 @@ public:
 		return true;
 	}
 
-	virtual void OnBind( C_BaseEntity *pBaseEntity )
+	virtual void OnBind( void *pC_BaseEntity )
 	{
 		if ( !m_pBaseTextureVar || !m_pBaseTextureVar->IsTexture() )
 			return;
@@ -889,17 +892,32 @@ public:
 		}
 
 		ITexture *pTargetTexture = m_pDefaultTexture;
-		if ( pBaseEntity )
+
+		char szOverridePath[MAX_PATH];
+		if ( pC_BaseEntity && Inventory_ResolvePreviewGloveOverrideTexture( pC_BaseEntity, szOverridePath, sizeof( szOverridePath ) ) )
 		{
-			FOR_EACH_VEC( s_vecActiveAttachmentModels, i )
+			ITexture *pPreviewTex = materials->FindTexture( szOverridePath, TEXTURE_GROUP_MODEL, false );
+			if ( pPreviewTex && !pPreviewTex->IsError() )
 			{
-				if ( s_vecActiveAttachmentModels[i] == pBaseEntity )
+				pTargetTexture = pPreviewTex;
+			}
+		}
+		else if ( pC_BaseEntity )
+		{
+			IClientRenderable *pRend = reinterpret_cast<IClientRenderable *>( pC_BaseEntity );
+			C_BaseEntity *pBaseEntity = ( pRend && pRend->GetIClientUnknown() ) ? pRend->GetIClientUnknown()->GetBaseEntity() : NULL;
+			if ( pBaseEntity )
+			{
+				FOR_EACH_VEC( s_vecActiveAttachmentModels, i )
 				{
-					if ( s_vecActiveAttachmentModels[i]->GetOverrideBaseTexture() )
+					if ( s_vecActiveAttachmentModels[i] == pBaseEntity )
 					{
-						pTargetTexture = s_vecActiveAttachmentModels[i]->GetOverrideBaseTexture();
+						if ( s_vecActiveAttachmentModels[i]->GetOverrideBaseTexture() )
+						{
+							pTargetTexture = s_vecActiveAttachmentModels[i]->GetOverrideBaseTexture();
+						}
+						break;
 					}
-					break;
 				}
 			}
 		}
@@ -923,190 +941,11 @@ private:
 EXPOSE_INTERFACE( CArmSkinTextureProxy, IMaterialProxy, "ArmSkinTexture" IMATERIAL_PROXY_INTERFACE_VERSION );
 
 #ifdef CSTRIKE_DLL
-struct AK47CosmeticEntry_t
-{
-	const char *pszKey;
-	const char *pszDisplayName;
-};
-
-static const AK47CosmeticEntry_t s_AK47Skins[] =
-{
-	{ "bloodsport",			"Bloodsport" },
-	{ "vulcan",				"Vulcan" },
-	{ "asiimov",			"Asiimov" },
-	{ "redline",			"Redline" },
-	{ "fireserpent",		"Fire Serpent" },
-	{ "empress",			"The Empress" },
-	{ "neon_rider",			"Neon Rider" },
-	{ "aquamarine",			"Aquamarine Revenge" },
-	{ "fuel_injector",		"Fuel Injector" },
-	{ "frontside_misty",	"Frontside Misty" },
-	{ "wild_lotus",			"Wild Lotus" },
-	{ "gold_arabesque",		"Gold Arabesque" },
-	{ "neon_revolution",	"Neon Revolution" },
-	{ "nightwish",			"Nightwish" },
-	{ "head_shot",			"Head Shot" },
-	{ "ice_coaled",			"Ice Coaled" },
-	{ "leet_museo",			"Leet Museo" },
-	{ "slate",				"Slate" },
-	{ "xray",				"X-Ray" },
-	{ "anubis",				"Legion of Anubis" },
-	{ "point_disarray",		"Point Disarray" },
-	{ "wasteland_rebel",	"Wasteland Rebel" },
-	{ "jaguar",				"Jaguar" },
-	{ "panthera_onca",		"Panthera onca" },
-	{ "cartel",				"Cartel" },
-	{ "elite_build",		"Elite Build" },
-	{ "phantom_disruptor",	"Phantom Disruptor" },
-	{ "jet_set",			"Jet Set" },
-	{ "first_class",		"First Class" },
-	{ "emerald_pinstripe",	"Emerald Pinstripe" },
-	{ "orbit_mk01",			"Orbit Mk01" },
-	{ "rat_rod",			"Rat Rod" },
-	{ "uncharted",			"Uncharted" },
-	{ "steel_delta",		"Steel Delta" },
-};
-
-static const AK47CosmeticEntry_t s_AK47Stickers[] =
-{
-	{ "ibuypower",			"iBUYPOWER (Katowice 2014)" },
-	{ "titan",				"Titan (Katowice 2014)" },
-	{ "crown",				"Crown" },
-	{ "howling_dawn",		"Howling Dawn" },
-	{ "reason",				"Reason Gaming (Katowice 2014)" },
-	{ "lgb",				"LGB eSports (Katowice 2014)" },
-	{ "navi_kato14",		"Natus Vincere (Katowice 2014)" },
-	{ "virtuspro_kato14",	"Virtus.pro (Katowice 2014)" },
-	{ "fnatic_kato14",		"Fnatic (Katowice 2014)" },
-	{ "vox",				"Vox Eminor (Katowice 2014)" },
-	{ "dignitas",			"Team Dignitas (Katowice 2014)" },
-	{ "ldlc",				"Team LDLC (Katowice 2014)" },
-	{ "nip_kato14",			"Ninjas in Pyjamas (Katowice 2014)" },
-	{ "hellraisers",		"HellRaisers (Katowice 2014)" },
-	{ "complexity",			"compLexity (Katowice 2014)" },
-	{ "3dmax",				"3DMAX (Katowice 2014)" },
-	{ "mousesports",		"mousesports (Katowice 2014)" },
-	{ "mystik",				"Clan-Mystik (Katowice 2014)" },
-	{ "flammable",			"Flammable" },
-	{ "headhunter",			"Headhunter" },
-	{ "swag",				"Swag" },
-	{ "new_sheriff",		"New Sheriff" },
-	{ "firestarter",		"Firestarter" },
-	{ "dragon_lore",		"Dragon Lore" },
-	{ "gold_web",			"Gold Web" },
-	{ "battle_scarred",		"Battle Scarred" },
-	{ "broken_fang",		"Broken Fang" },
-	{ "ak47_recoil",		"AK-47 Recoil" },
-	{ "ak47_recoil_gold",	"AK-47 Recoil (Gold)" },
-	{ "baby_howl",			"Baby Howl" },
-	{ "baby_lore",			"Baby Lore" },
-	{ "baby_fire_serpent",	"Baby Fire Serpent" },
-	{ "blue_gem",			"Blue Gem" },
-	{ "bomb_doge",			"Bomb Doge" },
-	{ "drug_war",			"Drug War Veteran" },
-	{ "welcome_clutch",		"Welcome to the Clutch" },
-	{ "bish",				"Bish" },
-	{ "bash",				"Bash" },
-	{ "bosh",				"Bosh" },
-	{ "lambda",				"Half-Life Lambda" },
-};
-
-static ConVar * const s_pAK47StickerConVars[4] =
-{
-	&cl_ak47_sticker_1,
-	&cl_ak47_sticker_2,
-	&cl_ak47_sticker_3,
-	&cl_ak47_sticker_4,
-};
-
-static const char * const s_pszAK47StickerModels[4] =
-{
-	"models/advanced_inventory_csgo_items/weapons/stickers/v_models/rif_ak47_decal_a.mdl",
-	"models/advanced_inventory_csgo_items/weapons/stickers/v_models/rif_ak47_decal_b.mdl",
-	"models/advanced_inventory_csgo_items/weapons/stickers/v_models/rif_ak47_decal_c.mdl",
-	"models/advanced_inventory_csgo_items/weapons/stickers/v_models/rif_ak47_decal_d.mdl",
-};
-
-static bool MatchesNormalizedSkinToken( const char *pszInput, const char *pszCandidate )
-{
-	if ( !pszInput || !pszCandidate )
-		return false;
-
-	const char *a = pszInput;
-	const char *b = pszCandidate;
-	while ( *a && *b )
-	{
-		while ( *a == ' ' || *a == '_' || *a == '-' ) ++a;
-		while ( *b == ' ' || *b == '_' || *b == '-' ) ++b;
-		if ( !*a || !*b )
-			break;
-		if ( tolower( (unsigned char)*a ) != tolower( (unsigned char)*b ) )
-			return false;
-		++a;
-		++b;
-	}
-	while ( *a == ' ' || *a == '_' || *a == '-' ) ++a;
-	while ( *b == ' ' || *b == '_' || *b == '-' ) ++b;
-	return ( *a == '\0' && *b == '\0' );
-}
-
-static const char *ResolveAK47TableKey( const char *pszChoice, const AK47CosmeticEntry_t *pEntries, int nCount )
-{
-	if ( !pszChoice || !pszChoice[0] || !V_stricmp( pszChoice, "0" ) || !V_stricmp( pszChoice, "default" ) || !V_stricmp( pszChoice, "none" ) )
-		return NULL;
-
-	bool bDigitsOnly = true;
-	for ( const char *p = pszChoice; *p; ++p )
-	{
-		if ( !isdigit( (unsigned char)*p ) )
-		{
-			bDigitsOnly = false;
-			break;
-		}
-	}
-
-	if ( bDigitsOnly )
-	{
-		int nIndex = atoi( pszChoice );
-		if ( nIndex >= 1 && nIndex <= nCount )
-			return pEntries[nIndex - 1].pszKey;
-		return NULL;
-	}
-
-	for ( int i = 0; i < nCount; ++i )
-	{
-		if ( MatchesNormalizedSkinToken( pszChoice, pEntries[i].pszKey ) ||
-			 MatchesNormalizedSkinToken( pszChoice, pEntries[i].pszDisplayName ) )
-			return pEntries[i].pszKey;
-	}
-
-	return NULL;
-}
-
-static bool ResolveAK47SkinTexturePath( const char *pszChoice, char *pszOutPath, int nOutSize )
-{
-	const char *pszKey = ResolveAK47TableKey( pszChoice, s_AK47Skins, ARRAYSIZE( s_AK47Skins ) );
-	if ( !pszKey )
-		return false;
-
-	V_snprintf( pszOutPath, nOutSize, "advanced_inventory_csgo_items/models/weapons/v_models/rif_ak47/skins/%s", pszKey );
-	return true;
-}
-
-static bool ResolveAK47StickerTexturePath( const char *pszChoice, char *pszOutPath, int nOutSize )
-{
-	const char *pszKey = ResolveAK47TableKey( pszChoice, s_AK47Stickers, ARRAYSIZE( s_AK47Stickers ) );
-	if ( !pszKey )
-		return false;
-
-	V_snprintf( pszOutPath, nOutSize, "advanced_inventory_csgo_items/models/weapons/customization/stickers/%s", pszKey );
-	return true;
-}
-
 struct ViewmodelStickerSlotState_t
 {
 	CHandle<C_BaseViewModel> hViewModel;
-	CHandle<C_ViewmodelAttachmentModel> hStickers[4];
+	int nWeaponIdx;
+	CHandle<C_ViewmodelAttachmentModel> hStickers[INV_MAX_STICKER_SLOTS];
 };
 
 static CUtlVector< ViewmodelStickerSlotState_t > s_vecViewmodelStickers;
@@ -1118,7 +957,7 @@ static int FindOrCreateStickerStateIndex( C_BaseViewModel *pVM, bool bCreate )
 		C_BaseViewModel *pExisting = s_vecViewmodelStickers[i].hViewModel.Get();
 		if ( !pExisting )
 		{
-			for ( int s = 0; s < 4; ++s )
+			for ( int s = 0; s < INV_MAX_STICKER_SLOTS; ++s )
 			{
 				if ( C_ViewmodelAttachmentModel *pStk = s_vecViewmodelStickers[i].hStickers[s].Get() )
 				{
@@ -1137,6 +976,7 @@ static int FindOrCreateStickerStateIndex( C_BaseViewModel *pVM, bool bCreate )
 
 	int idx = s_vecViewmodelStickers.AddToTail();
 	s_vecViewmodelStickers[idx].hViewModel = pVM;
+	s_vecViewmodelStickers[idx].nWeaponIdx = -1;
 	return idx;
 }
 
@@ -1146,7 +986,7 @@ static void RemoveViewmodelStickers( C_BaseViewModel *pVM )
 	if ( idx == -1 )
 		return;
 
-	for ( int s = 0; s < 4; ++s )
+	for ( int s = 0; s < INV_MAX_STICKER_SLOTS; ++s )
 	{
 		if ( C_ViewmodelAttachmentModel *pStk = s_vecViewmodelStickers[idx].hStickers[s].Get() )
 		{
@@ -1157,33 +997,83 @@ static void RemoveViewmodelStickers( C_BaseViewModel *pVM )
 	s_vecViewmodelStickers.Remove( idx );
 }
 
-static bool IsAK47ViewmodelActive( C_BaseViewModel *pVM )
+static int GetCustomizableViewmodelWeaponIndex( C_BaseViewModel *pVM )
 {
 	if ( !pVM )
-		return false;
+		return -1;
 
 	C_WeaponCSBase *pCSWeapon = dynamic_cast<C_WeaponCSBase *>( pVM->GetOwningWeapon() );
-	return ( pCSWeapon && pCSWeapon->IsA( WEAPON_AK47 ) );
+	if ( !pCSWeapon )
+		return -1;
+
+	if ( pCSWeapon->IsA( WEAPON_M4A1 ) )
+		return INV_SKIN_WEP_M4A1;
+
+	static const struct
+	{
+		int eWeaponID;
+		int nSkinWep;
+	} s_WeaponMap[] =
+	{
+		{ WEAPON_AK47,      INV_SKIN_WEP_AK47 },
+		{ WEAPON_AWP,       INV_SKIN_WEP_AWP },
+		{ WEAPON_DEAGLE,    INV_SKIN_WEP_DEAGLE },
+		{ WEAPON_GLOCK,     INV_SKIN_WEP_GLOCK },
+		{ WEAPON_USP,       INV_SKIN_WEP_USP },
+		{ WEAPON_MAC10,     INV_SKIN_WEP_MAC10 },
+		{ WEAPON_TMP,       INV_SKIN_WEP_MP9 },
+		{ WEAPON_P90,       INV_SKIN_WEP_P90 },
+		{ WEAPON_M3,        INV_SKIN_WEP_NOVA },
+		{ WEAPON_XM1014,    INV_SKIN_WEP_XM1014 },
+		{ WEAPON_P228,      INV_SKIN_WEP_P228 },
+		{ WEAPON_ELITE,     INV_SKIN_WEP_ELITE },
+		{ WEAPON_FIVESEVEN, INV_SKIN_WEP_FIVESEVEN },
+		{ WEAPON_MP5NAVY,   INV_SKIN_WEP_MP5 },
+		{ WEAPON_UMP45,     INV_SKIN_WEP_UMP45 },
+		{ WEAPON_GALIL,     INV_SKIN_WEP_GALIL },
+		{ WEAPON_FAMAS,     INV_SKIN_WEP_FAMAS },
+		{ WEAPON_SCOUT,     INV_SKIN_WEP_SCOUT },
+		{ WEAPON_SG550,     INV_SKIN_WEP_SG550 },
+		{ WEAPON_SG552,     INV_SKIN_WEP_SG552 },
+		{ WEAPON_G3SG1,     INV_SKIN_WEP_G3SG1 },
+		{ WEAPON_AUG,       INV_SKIN_WEP_AUG },
+		{ WEAPON_M249,      INV_SKIN_WEP_M249 },
+	};
+
+	for ( int i = 0; i < ARRAYSIZE( s_WeaponMap ); ++i )
+	{
+		if ( pCSWeapon->IsA( (CSWeaponID)s_WeaponMap[i].eWeaponID ) )
+			return s_WeaponMap[i].nSkinWep;
+	}
+
+	return -1;
 }
 
 static void UpdateViewmodelStickers( C_BaseViewModel *pVM, C_CSPlayer *pPlayer )
 {
-	if ( !pVM || !pPlayer || !pPlayer->IsAlive() || !IsAK47ViewmodelActive( pVM ) )
+	int nCurWep = GetCustomizableViewmodelWeaponIndex( pVM );
+	if ( !pVM || !pPlayer || !pPlayer->IsAlive() || nCurWep < 0 )
 	{
 		RemoveViewmodelStickers( pVM );
 		return;
 	}
 
 	int idx = FindOrCreateStickerStateIndex( pVM, false );
-	bool bNeedAny = false;
-	bool bWantSlot[4] = { false, false, false, false };
-	char szTexPath[MAX_PATH];
-	for ( int s = 0; s < 4; ++s )
+	if ( idx != -1 && s_vecViewmodelStickers[idx].nWeaponIdx != nCurWep )
 	{
-		bWantSlot[s] = ResolveAK47StickerTexturePath( s_pAK47StickerConVars[s]->GetString(), szTexPath, sizeof( szTexPath ) );
+		RemoveViewmodelStickers( pVM );
+		idx = -1;
+	}
+
+	bool bNeedAny = false;
+	bool bWantSlot[INV_MAX_STICKER_SLOTS] = { false, false, false, false };
+	Inventory_GetActiveStickersForViewmodel( nCurWep, pVM, pPlayer, bWantSlot );
+	for ( int s = 0; s < INV_MAX_STICKER_SLOTS; ++s )
+	{
 		if ( bWantSlot[s] )
 		{
 			bNeedAny = true;
+			break;
 		}
 	}
 
@@ -1196,9 +1086,12 @@ static void UpdateViewmodelStickers( C_BaseViewModel *pVM, C_CSPlayer *pPlayer )
 	if ( idx == -1 )
 	{
 		idx = FindOrCreateStickerStateIndex( pVM, true );
+		if ( idx == -1 )
+			return;
+		s_vecViewmodelStickers[idx].nWeaponIdx = nCurWep;
 	}
 
-	for ( int s = 0; s < 4; ++s )
+	for ( int s = 0; s < INV_MAX_STICKER_SLOTS; ++s )
 	{
 		C_ViewmodelAttachmentModel *pExisting = s_vecViewmodelStickers[idx].hStickers[s].Get();
 		if ( !bWantSlot[s] )
@@ -1214,15 +1107,18 @@ static void UpdateViewmodelStickers( C_BaseViewModel *pVM, C_CSPlayer *pPlayer )
 		if ( pExisting )
 			continue;
 
-		const char *pszModelPath = s_pszAK47StickerModels[s];
-		if ( modelinfo->GetModelIndex( pszModelPath ) == -1 && ( !filesystem || !filesystem->FileExists( pszModelPath, "GAME" ) ) )
+		char szModelPath[MAX_PATH];
+		Inventory_GetWeaponStickerModelPath( nCurWep, s, szModelPath, sizeof( szModelPath ) );
+		if ( !szModelPath[0] )
+			continue;
+		if ( modelinfo->GetModelIndex( szModelPath ) == -1 && ( !filesystem || !filesystem->FileExists( szModelPath, "GAME" ) ) )
 			continue;
 
 		C_ViewmodelAttachmentModel *pEnt = new C_ViewmodelAttachmentModel;
 		if ( !pEnt )
 			continue;
 
-		if ( pEnt->InitializeArmModel( pszModelPath, 0, false, NULL ) )
+		if ( pEnt->InitializeArmModel( szModelPath, 0, false, NULL ) )
 		{
 			s_vecViewmodelStickers[idx].hStickers[s] = pEnt;
 			pEnt->SetParent( pVM );
@@ -1241,14 +1137,15 @@ static void UpdateViewmodelStickers( C_BaseViewModel *pVM, C_CSPlayer *pPlayer )
 
 static void DrawViewmodelStickers( C_BaseViewModel *pVM, int flags )
 {
-	if ( !pVM || !flags || !IsAK47ViewmodelActive( pVM ) )
+	int nCurWep = GetCustomizableViewmodelWeaponIndex( pVM );
+	if ( !pVM || !flags || nCurWep < 0 )
 		return;
 
 	int idx = FindOrCreateStickerStateIndex( pVM, false );
-	if ( idx == -1 )
+	if ( idx == -1 || s_vecViewmodelStickers[idx].nWeaponIdx != nCurWep )
 		return;
 
-	for ( int s = 0; s < 4; ++s )
+	for ( int s = 0; s < INV_MAX_STICKER_SLOTS; ++s )
 	{
 		C_ViewmodelAttachmentModel *pStk = s_vecViewmodelStickers[idx].hStickers[s].Get();
 		if ( !pStk )
@@ -1264,12 +1161,88 @@ static void DrawViewmodelStickers( C_BaseViewModel *pVM, int flags )
 	}
 }
 
-typedef bool (*ResolveWeaponTexturePathFn)( const char *pszChoice, char *pszOutPath, int nOutSize );
+static int DetectWeaponIndexFromMaterial( IMaterial *pMaterial, KeyValues *pKeyValues )
+{
+	static const struct
+	{
+		const char *pszKVName;
+		const char *pszMatSubstr;
+		int nSkinWep;
+	} s_MatMap[] =
+	{
+		{ "awp",       "snip_awp",      INV_SKIN_WEP_AWP },
+		{ "deagle",    "pist_deagle",   INV_SKIN_WEP_DEAGLE },
+		{ "m4a1_s",    "rif_m4a1_s",    INV_SKIN_WEP_M4A1 },
+		{ "m4a1",      "rif_m4a1_s",    INV_SKIN_WEP_M4A1 },
+		{ "ak47",      "rif_ak47",      INV_SKIN_WEP_AK47 },
+		{ "glock",     "pist_glock18",  INV_SKIN_WEP_GLOCK },
+		{ "usp",       "pist_223",      INV_SKIN_WEP_USP },
+		{ "mac10",     "smg_mac10",     INV_SKIN_WEP_MAC10 },
+		{ "mp9",       "smg_mp9",       INV_SKIN_WEP_MP9 },
+		{ "p90",       "smg_p90",       INV_SKIN_WEP_P90 },
+		{ "nova",      "shot_nova",     INV_SKIN_WEP_NOVA },
+		{ "xm1014",    "shot_xm1014",   INV_SKIN_WEP_XM1014 },
+		{ "p228",      "pist_p250",     INV_SKIN_WEP_P228 },
+		{ "elite",     "pist_elite",    INV_SKIN_WEP_ELITE },
+		{ "fiveseven", "pist_fiveseven",INV_SKIN_WEP_FIVESEVEN },
+		{ "mp5",       "smg_mp5sd",     INV_SKIN_WEP_MP5 },
+		{ "ump45",     "smg_ump45",     INV_SKIN_WEP_UMP45 },
+		{ "galil",     "rif_galilar",   INV_SKIN_WEP_GALIL },
+		{ "famas",     "rif_famas",     INV_SKIN_WEP_FAMAS },
+		{ "scout",     "snip_ssg08",    INV_SKIN_WEP_SCOUT },
+		{ "sg550",     "snip_scar20",   INV_SKIN_WEP_SG550 },
+		{ "sg552",     "rif_sg556",     INV_SKIN_WEP_SG552 },
+		{ "g3sg1",     "snip_g3sg1",    INV_SKIN_WEP_G3SG1 },
+		{ "aug",       "rif_aug",       INV_SKIN_WEP_AUG },
+		{ "m249",      "mach_m249para", INV_SKIN_WEP_M249 },
+		{ "knife_bayonet",         "knife_bayonet",           INV_KNIFE_HINT_BASE + 1 },
+		{ "knife_css",             "knife_css",               INV_KNIFE_HINT_BASE + 2 },
+		{ "knife_flip",            "knife_flip",              INV_KNIFE_HINT_BASE + 3 },
+		{ "knife_gut",             "knife_gut",               INV_KNIFE_HINT_BASE + 4 },
+		{ "knife_karambit",        "knife_karam",             INV_KNIFE_HINT_BASE + 5 },
+		{ "knife_m9_bayonet",      "knife_m9_bay",            INV_KNIFE_HINT_BASE + 6 },
+		{ "knife_tactical",        "knife_tactical",          INV_KNIFE_HINT_BASE + 7 },
+		{ "knife_falchion",        "knife_falchion_advanced", INV_KNIFE_HINT_BASE + 8 },
+		{ "knife_survival_bowie",  "knife_survival_bowie",    INV_KNIFE_HINT_BASE + 9 },
+		{ "knife_butterfly",       "knife_butterfly",         INV_KNIFE_HINT_BASE + 10 },
+		{ "knife_push",            "knife_push",              INV_KNIFE_HINT_BASE + 11 },
+		{ "knife_cord",            "knife_cord",              INV_KNIFE_HINT_BASE + 12 },
+		{ "knife_canis",           "knife_canis",             INV_KNIFE_HINT_BASE + 13 },
+		{ "knife_ursus",           "knife_ursus",             INV_KNIFE_HINT_BASE + 14 },
+		{ "knife_gypsy_jackknife", "knife_gypsy_jack",        INV_KNIFE_HINT_BASE + 15 },
+		{ "knife_outdoor",         "knife_outdoor",           INV_KNIFE_HINT_BASE + 16 },
+		{ "knife_stiletto",        "knife_stiletto",          INV_KNIFE_HINT_BASE + 17 },
+		{ "knife_widowmaker",      "knife_widowmaker",        INV_KNIFE_HINT_BASE + 18 },
+		{ "knife_skeleton",        "knife_skeleton",          INV_KNIFE_HINT_BASE + 19 },
+	};
 
-class CBaseWeaponConVarTextureProxy : public CEntityMaterialProxy
+	const char *pszWepKV = pKeyValues ? pKeyValues->GetString( "weapon", "" ) : "";
+	if ( pszWepKV && pszWepKV[0] )
+	{
+		for ( int i = 0; i < ARRAYSIZE( s_MatMap ); ++i )
+		{
+			if ( !V_stricmp( pszWepKV, s_MatMap[i].pszKVName ) )
+				return s_MatMap[i].nSkinWep;
+		}
+	}
+
+	const char *pszMatName = pMaterial ? pMaterial->GetName() : NULL;
+	if ( pszMatName && pszMatName[0] )
+	{
+		for ( int i = 0; i < ARRAYSIZE( s_MatMap ); ++i )
+		{
+			if ( V_stristr( pszMatName, s_MatMap[i].pszMatSubstr ) )
+				return s_MatMap[i].nSkinWep;
+		}
+	}
+
+	return -1;
+}
+
+class CBaseWeaponConVarTextureProxy : public IMaterialProxy
 {
 public:
-	CBaseWeaponConVarTextureProxy() : m_pBaseTextureVar( NULL ), m_pDefaultTexture( NULL ), m_pOverrideTexture( NULL )
+	CBaseWeaponConVarTextureProxy() : m_pBaseTextureVar( NULL ), m_pDefaultTexture( NULL ), m_pOverrideTexture( NULL ), m_nWeaponIdx( -1 )
 	{
 		m_szLastChoice[0] = '\0';
 	}
@@ -1284,12 +1257,19 @@ public:
 		}
 	}
 
+	virtual void Release()
+	{
+		delete this;
+	}
+
 	virtual bool Init( IMaterial *pMaterial, KeyValues *pKeyValues )
 	{
 		bool bFound = false;
 		m_pBaseTextureVar = pMaterial->FindVar( "$basetexture", &bFound, false );
 		if ( !bFound || !m_pBaseTextureVar )
 			return false;
+
+		m_nWeaponIdx = DetectWeaponIndexFromMaterial( pMaterial, pKeyValues );
 
 		if ( m_pBaseTextureVar->IsTexture() )
 		{
@@ -1309,6 +1289,8 @@ public:
 	}
 
 protected:
+	virtual bool ResolveChoiceToTexturePath( const char *pszChoice, char *pszOutPath, int nOutSize ) = 0;
+
 	void ReleaseCachedOverride()
 	{
 		if ( m_pOverrideTexture )
@@ -1335,7 +1317,7 @@ protected:
 		return true;
 	}
 
-	void UpdateOverrideFromChoice( const char *pszChoice, ResolveWeaponTexturePathFn pfnResolve )
+	void UpdateOverrideFromChoice( const char *pszChoice )
 	{
 		if ( !V_strcmp( m_szLastChoice, pszChoice ) )
 			return;
@@ -1344,7 +1326,7 @@ protected:
 		ReleaseCachedOverride();
 
 		char szTexturePath[MAX_PATH];
-		if ( pfnResolve( pszChoice, szTexturePath, sizeof( szTexturePath ) ) )
+		if ( ResolveChoiceToTexturePath( pszChoice, szTexturePath, sizeof( szTexturePath ) ) )
 		{
 			ITexture *pTex = materials->FindTexture( szTexturePath, TEXTURE_GROUP_MODEL, false );
 			if ( pTex && !IsErrorTexture( pTex ) )
@@ -1367,45 +1349,31 @@ protected:
 	IMaterialVar *m_pBaseTextureVar;
 	ITexture *m_pDefaultTexture;
 	ITexture *m_pOverrideTexture;
+	int m_nWeaponIdx;
 	char m_szLastChoice[128];
 };
 
 class CWeaponSkinTextureProxy : public CBaseWeaponConVarTextureProxy
 {
 public:
-	virtual void OnBind( C_BaseEntity *pBaseEntity )
+	virtual void OnBind( void *pRenderable )
 	{
 		if ( !PrepareBaseTexture() )
 			return;
 
-		bool bApply = ShouldApplyAK47Skin( pBaseEntity );
-		if ( bApply )
+		char szChoice[128];
+		bool bApply = false;
+		if ( Inventory_ResolveWeaponSkinChoiceForRenderable( m_nWeaponIdx, pRenderable, szChoice, sizeof( szChoice ), bApply ) && bApply )
 		{
-			UpdateOverrideFromChoice( cl_ak47_skin.GetString(), ResolveAK47SkinTexturePath );
+			UpdateOverrideFromChoice( szChoice );
 		}
 		ApplyTargetTexture( bApply );
 	}
 
-private:
-	bool ShouldApplyAK47Skin( C_BaseEntity *pBaseEntity ) const
+protected:
+	virtual bool ResolveChoiceToTexturePath( const char *pszChoice, char *pszOutPath, int nOutSize )
 	{
-		if ( !pBaseEntity )
-			return false;
-
-		if ( C_BaseViewModel *pVM = dynamic_cast<C_BaseViewModel *>( pBaseEntity ) )
-			return IsAK47ViewmodelActive( pVM );
-
-		if ( C_WeaponCSBase *pCSWeapon = dynamic_cast<C_WeaponCSBase *>( pBaseEntity ) )
-		{
-			if ( !pCSWeapon->IsA( WEAPON_AK47 ) )
-				return false;
-
-			C_BasePlayer *pLocal = C_BasePlayer::GetLocalPlayer();
-			C_BasePlayer *pOwner = pCSWeapon->GetPlayerOwner();
-			return ( !pOwner || pOwner == pLocal );
-		}
-
-		return false;
+		return Inventory_ResolveWeaponSkinTexturePath( m_nWeaponIdx, pszChoice, pszOutPath, nOutSize );
 	}
 };
 
@@ -1419,17 +1387,27 @@ public:
 		if ( !CBaseWeaponConVarTextureProxy::Init( pMaterial, pKeyValues ) )
 			return false;
 
-		m_nSlot = pKeyValues ? clamp( pKeyValues->GetInt( "slot", 0 ), 0, 3 ) : 0;
+		m_nSlot = pKeyValues ? clamp( pKeyValues->GetInt( "slot", 0 ), 0, INV_MAX_STICKER_SLOTS - 1 ) : 0;
 		return true;
 	}
 
-	virtual void OnBind( C_BaseEntity *pBaseEntity )
+	virtual void OnBind( void *pRenderable )
 	{
 		if ( !PrepareBaseTexture() )
 			return;
 
-		UpdateOverrideFromChoice( s_pAK47StickerConVars[m_nSlot]->GetString(), ResolveAK47StickerTexturePath );
+		char szChoice[128];
+		if ( Inventory_ResolveWeaponStickerChoiceForRenderable( m_nWeaponIdx, pRenderable, m_nSlot, szChoice, sizeof( szChoice ) ) )
+		{
+			UpdateOverrideFromChoice( szChoice );
+		}
 		ApplyTargetTexture( m_pOverrideTexture != NULL );
+	}
+
+protected:
+	virtual bool ResolveChoiceToTexturePath( const char *pszChoice, char *pszOutPath, int nOutSize )
+	{
+		return Inventory_ResolveStickerTexturePath( pszChoice, pszOutPath, nOutSize );
 	}
 
 private:

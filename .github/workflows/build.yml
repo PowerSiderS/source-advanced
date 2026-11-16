@@ -79,7 +79,7 @@ jobs:
         include:
           - arch: aarch64
             name: arm64
-            configure_args: "--64bits --togles --android=aarch64,host,21"
+            configure_args: "--togles --android=aarch64,host,21"
             lib_subpath: aarch64
             strip_tool: aarch64-linux-android-4.9/prebuilt/linux-x86_64/aarch64-linux-android/bin/strip
           - arch: armeabi-v7a-hard
@@ -307,7 +307,7 @@ jobs:
 
       - name: Configure build with Waf
         run: |
-          python3 waf configure -T release --build-games=cstrike -d --disable-warns --64bits --enable-opus
+          python3 waf configure -T release --build-games=cstrike -d --disable-warns --enable-opus
 
       - name: Build project
         run: |

@@ -1,0 +1,331 @@
+name: Build Source Advanced
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Select Build Target'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - pc
+          - android
+          - android-apk
+          - linux-dedicated
+
+concurrency:
+  group: sa-builds-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'pc' }}
+    name: Build Windows (${{ matrix.target }})
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-amd64
+            arch_flag: ""
+          - target: windows-i386
+            arch_flag: "-4"
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Build Windows
+        shell: pwsh
+        run: |
+          ./waf.bat configure -T release --build-games=cstrike ${{ matrix.arch_flag }} --enable-opus --disable-warns --prefix="./output"
+          ./waf.bat install
+
+      - name: Remove debug artifacts
+        if: success()
+        shell: pwsh
+        run: |
+          if (Test-Path "./output") {
+            Get-ChildItem -Path "./output" -Include *.pdb,*.lib -Recurse | Remove-Item -Force
+          }
+
+      - name: Upload Windows artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cstrike-${{ matrix.target }}
+          path: ./output
+          if-no-files-found: error
+
+  build-android:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'android' || github.event.inputs.target == 'android-apk' }}
+    name: Build Android (${{ matrix.arch }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            name: arm64
+            configure_args: "--64bits --togles --android=aarch64,host,21"
+            lib_subpath: aarch64
+            strip_tool: aarch64-linux-android-4.9/prebuilt/linux-x86_64/aarch64-linux-android/bin/strip
+          - arch: armeabi-v7a-hard
+            name: armv7
+            configure_args: "--togles --android=armeabi-v7a-hard,host,21"
+            lib_subpath: arm
+            strip_tool: arm-linux-androideabi-4.9/prebuilt/linux-x86_64/arm-linux-androideabi/bin/strip
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            gcc-9 g++-9 \
+            gcc-multilib g++-multilib \
+            pkg-config \
+            ccache \
+            python3 \
+            zlib1g-dev zlib1g-dev:i386 \
+            libbz2-dev libbz2-dev:i386 \
+            libedit-dev libedit-dev:i386 \
+            libx11-dev:i386 \
+            libxext-dev:i386 \
+            libxrandr-dev:i386 \
+            libxinerama-dev:i386 \
+            libxcursor-dev:i386 \
+            libgl1-mesa-dev:i386 \
+            libfreetype6-dev:i386 \
+            libcurl4-gnutls-dev:i386 \
+            libopenal-dev:i386 \
+            libjpeg-dev libjpeg-dev:i386 \
+            libpng-dev libpng-dev:i386
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 || true
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 90 || true
+          sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1 || true
+          sudo apt-get install -y libtinfo5 libncurses5 || {
+            sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5
+            sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5
+          }
+
+      - name: Cache Build Tools
+        id: cache-build-tools
+        uses: actions/cache@v4
+        with:
+          key: ${{ runner.os }}-android-ndk-llvm-${{ hashFiles('**/waf', '**/wscript') }}
+          restore-keys: ${{ runner.os }}-android-ndk-llvm-
+          path: |
+            ~/android-ndk
+            ~/llvm11
+
+      - name: Download and setup Android NDK r10e + LLVM 11
+        if: ${{ steps.cache-build-tools.outputs.cache-hit != 'true' }}
+        run: |
+          mkdir -p $HOME/android-ndk
+          wget -nv https://dl.google.com/android/repository/android-ndk-r10e-linux-x86_64.zip
+          unzip -q android-ndk-r10e-linux-x86_64.zip -d $HOME/android-ndk/
+
+          mkdir -p $HOME/llvm11
+          wget -nv https://github.com/llvm/llvm-project/releases/download/llvmorg-11.1.0/clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+          tar -xJf clang+llvm-11.1.0-x86_64-linux-gnu-ubuntu-16.04.tar.xz --strip-components=1 -C $HOME/llvm11
+
+      - name: Setup environment variables
+        run: |
+          echo "ANDROID_NDK_HOME=$HOME/android-ndk/android-ndk-r10e" >> $GITHUB_ENV
+          echo "NDK_HOME=$HOME/android-ndk/android-ndk-r10e" >> $GITHUB_ENV
+          echo "PATH=$HOME/android-ndk/android-ndk-r10e:$PATH" >> $GITHUB_ENV
+          echo "PATH=$HOME/llvm11/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Configure build with Waf
+        run: |
+          chmod +x ./waf
+          chmod +x $HOME/llvm11/bin/llvm-strip
+          CFLAGS="-O2" CXXFLAGS="-O2" LDFLAGS="-flto" python3 waf configure -T release --build-games=cstrike --enable-opus ${{ matrix.configure_args }} --disable-warns
+
+      - name: Build project
+        run: |
+          ./waf build -j$(nproc)
+
+      - name: Package .so files
+        run: |
+          mkdir -p output/android-${{ matrix.name }}
+          find build -type f -name "*.so" -exec cp {} output/android-${{ matrix.name }}/ \;
+          if [ -f "$HOME/android-ndk/android-ndk-r10e/toolchains/${{ matrix.strip_tool }}" ]; then
+            find ./output/android-${{ matrix.name }} -type f -name "*.so" -exec $HOME/android-ndk/android-ndk-r10e/toolchains/${{ matrix.strip_tool }} --strip-unneeded {} \;
+          fi
+          if [ -f "lib/android/${{ matrix.lib_subpath }}/libSDL2.so" ]; then
+            cp -r lib/android/${{ matrix.lib_subpath }}/libSDL2.so output/android-${{ matrix.name }}/
+          fi
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cstrike-android-${{ matrix.name }}
+          path: ./output/android-${{ matrix.name }}/
+
+  build-apk:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'android-apk' }}
+    needs: build-android
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Launcher source
+        uses: actions/checkout@v4
+        with:
+          repository: PowerSiderS/sa-android-launcher
+          path: launcher
+
+      - name: Download ARM64 binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: cstrike-android-arm64
+          path: ./libs/arm64-v8a
+
+      - name: Download ARMv7 binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: cstrike-android-armv7
+          path: ./libs/armeabi-v7a
+
+      - name: Copy binaries to jniLibs
+        run: |
+          mkdir -p launcher/app/src/main/jniLibs/arm64-v8a
+          mkdir -p launcher/app/src/main/jniLibs/armeabi-v7a
+          cp -r ./libs/arm64-v8a/*.so launcher/app/src/main/jniLibs/arm64-v8a/
+          cp -r ./libs/armeabi-v7a/*.so launcher/app/src/main/jniLibs/armeabi-v7a/
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-29" "build-tools;33.0.1"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-home-cache-cleanup: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x launcher/gradlew
+
+      - name: Build Release APK
+        working-directory: launcher
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Sign Release APK
+        run: |
+          keytool -genkeypair -v -keystore release.jks -alias cstrike -keyalg RSA -keysize 2048 -validity 10000 -storepass cstrike123 -keypass cstrike123 -dname "CN=SourceAdvanced, OU=SourceAdvanced, O=SourceAdvanced, L=Default, S=Default, C=US"
+          UNSIGNED_APK=$(find launcher/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          SIGNED_APK="launcher/app/build/outputs/apk/release/SourceAdvanced-V2-release.apk"
+          APKSIGNER=$(find $ANDROID_HOME/build-tools/ -name "apksigner" | sort -V | tail -n 1)
+          if [ -z "$APKSIGNER" ] || [ ! -f "$UNSIGNED_APK" ]; then
+            echo "Missing apksigner ($APKSIGNER) or unsigned APK ($UNSIGNED_APK)"
+            exit 1
+          fi
+          "$APKSIGNER" sign --ks release.jks --ks-key-alias cstrike --ks-pass pass:cstrike123 --key-pass pass:cstrike123 --out "$SIGNED_APK" "$UNSIGNED_APK"
+
+      - name: Find & Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sa-android-launcher-apk
+          path: launcher/app/build/outputs/apk/release/SourceAdvanced-V2-release.apk
+          if-no-files-found: error
+
+  build-linux-dedicated:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'linux-dedicated' }}
+    name: Build Dedicated Server for linux-amd64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            python3 \
+            lib32gcc-s1 \
+            g++-multilib \
+            gcc-multilib \
+            pkg-config \
+            ccache \
+            automake autoconf libtool \
+            libbz2-dev libbz2-dev:i386 \
+            libedit-dev libedit-dev:i386 \
+            zlib1g-dev zlib1g-dev:i386 \
+            libcurl4-gnutls-dev:i386 \
+            libopenal-dev:i386 \
+            libjpeg-dev libjpeg-dev:i386 \
+            libpng-dev libpng-dev:i386
+
+      - name: Build and install Opus with custom modes
+        run: |
+          git clone --recursive --depth 1 https://github.com/xiph/opus /tmp/opus
+          cd /tmp/opus
+          ./autogen.sh
+          ./configure --enable-custom-modes --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+
+      - name: Set Python 3 as default
+        run: |
+          sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+
+      - name: Configure build with Waf
+        run: |
+          python3 waf configure -T release --build-games=cstrike -d --disable-warns --64bits --enable-opus
+
+      - name: Build project
+        run: |
+          chmod +x ./waf
+          ./waf build -j$(nproc)
+
+      - name: Package .so files
+        run: |
+          mkdir -p output/server/bin
+          mkdir -p output/server/cstrike/bin
+          find build -type f -name "*.so" -not -name "libserver.so" -exec cp {} output/server/bin/ \;
+          find build -type f -name "libserver.so" -exec cp {} output/server/cstrike/bin/ \;
+          find build -type f -name "dedicated_launcher" -exec cp {} output/server/ \;
+          cp -P /usr/lib/x86_64-linux-gnu/libopus.so* output/server/bin/ 2>/dev/null || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cstrike-dedicated-linux-amd64
+          path: ./output/server/
+          if-no-files-found: error

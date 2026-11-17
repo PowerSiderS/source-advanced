@@ -61,14 +61,15 @@ struct ColorItem_t
 	int			r, g, b;
 };
 
+// Order must match cl_crosshaircolor in weapon_csbase.cpp: 0=green, 1=red, 2=blue, 3=yellow, 4=cyan, 5=custom
 static ColorItem_t s_crosshairColors[] = 
 {
-	{ "#Valve_Red",		250,	50,		50 },
-	{ "#Valve_Green",	50,		250,	50 },
-	{ "#Valve_Yellow",	250,	250,	50 },
-	{ "#Valve_Blue",	50,		50,		250 },
-	{ "#Valve_Ltblue",	50,		250,	250 },
-	{ "#GameUI_Crosshair_Color_Custom", 0, 0, 0 }
+	{ "#Valve_Green",					50,		250,	50 },
+	{ "#Valve_Red",						250,	50,		50 },
+	{ "#Valve_Blue",					50,		50,		250 },
+	{ "#Valve_Yellow",					250,	250,	50 },
+	{ "#Valve_Ltblue",					50,		250,	250 },
+	{ "#GameUI_Crosshair_Color_Custom",	0,		0,		0 }
 };
 
 static const char* crosshairBackgroundImages[] =
@@ -216,19 +217,24 @@ void CrosshairImagePanelCS::Paint()
 		a = m_pCrosshairAlpha->GetSliderValue();
 
 	int r, g, b;
-	switch ( m_pCrosshairColor->GetActiveItem() )
+	const int nColorIdx = m_pCrosshairColor->GetActiveItem();
+	if ( nColorIdx == 5 )
 	{
-		case 0:	r = 250;	g = 50;		b = 50;		break;
-		case 1:	r = 50;		g = 250;	b = 50;		break;
-		case 2:	r = 250;	g = 250;	b = 50;		break;
-		case 3:	r = 50;		g = 50;		b = 250;	break;
-		case 4:	r = 50;		g = 250;	b = 250;	break;
-		case 5:
-			r = m_pCrosshairColorR->GetSliderValue();
-			g = m_pCrosshairColorG->GetSliderValue();
-			b = m_pCrosshairColorB->GetSliderValue();
-			break;
-		default:	r = 50;		g = 250;	b = 50;		break;
+		r = m_pCrosshairColorR->GetSliderValue();
+		g = m_pCrosshairColorG->GetSliderValue();
+		b = m_pCrosshairColorB->GetSliderValue();
+	}
+	else if ( nColorIdx >= 0 && nColorIdx < ARRAYSIZE( s_crosshairColors ) - 1 )
+	{
+		r = s_crosshairColors[nColorIdx].r;
+		g = s_crosshairColors[nColorIdx].g;
+		b = s_crosshairColors[nColorIdx].b;
+	}
+	else
+	{
+		r = s_crosshairColors[0].r;
+		g = s_crosshairColors[0].g;
+		b = s_crosshairColors[0].b;
 	}
 
 	vgui::surface()->DrawSetColor( r, g, b, a );
@@ -336,7 +342,7 @@ void CrosshairImagePanelCS::ResetData()
 	m_pCrosshairT->Reset();
 
 	ConVarRef cl_crosshaircolor( "cl_crosshaircolor" );
-	m_pCrosshairColor->SetInitialItem( cl_crosshaircolor.GetInt() );
+	m_pCrosshairColor->SetInitialItem( clamp( cl_crosshaircolor.GetInt(), 0, ARRAYSIZE( s_crosshairColors ) - 1 ) );
 
 	SetImage( crosshairBackgroundImages[RandomInt(0, ARRAYSIZE(crosshairBackgroundImages) - 1)] ); // bruh
 

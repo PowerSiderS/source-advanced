@@ -236,6 +236,9 @@ public:
 	CNetworkVar( int , m_iLastZoom ); // after firing a shot, set the FOV to 90, and after showing the animation, bring the FOV back to last zoom level.
 	CNetworkVar( CSPlayerState, m_iPlayerState );	// SupraFiend: this gives the current state in the joining process, the states are listed above
 	CNetworkVar( bool, m_bIsDefusing );			// tracks whether this player is currently defusing a bomb
+	CNetworkVar( bool, m_bHasMovedSinceSpawn ); // Whether player has moved from spawn position
+	CNetworkVar( float, m_fImmuneToDamageTime ); // When spawn damage immunity will expire
+	CNetworkVar( bool, m_bImmunity );			// tracks whether this player is currently immune
 	CNetworkVar( bool, m_bInBombZone );
 	CNetworkVar( bool, m_bInBuyZone );
 	CNetworkVar( int, m_iThrowGrenadeCounter );	// used to trigger grenade throw animations.
@@ -399,7 +402,10 @@ private:
     // HPE_END
     //=============================================================================
 
-
+	bool m_bWasWarmupPeriod;
+	bool m_bLastWarmupPaused;
+	int m_nLastWarmupSec;
+	float m_flNextWarmupCenterPrintTime;
 
 	C_CSPlayer( const C_CSPlayer & );
 };

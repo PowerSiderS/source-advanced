@@ -435,6 +435,9 @@ void CCSGameMovement::PlayerMove()
 			}
 		}
 	}
+
+	if ( !m_pCSPlayer->m_bHasMovedSinceSpawn && Vector2DLength( mv->m_vecVelocity.AsVector2D() ) != 0 )
+		m_pCSPlayer->m_bHasMovedSinceSpawn = true;
 #endif
 }
 

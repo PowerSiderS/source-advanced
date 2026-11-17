@@ -655,6 +655,10 @@ void CWeaponCSBase::ItemPostFrame()
 			SecondaryAttack();
 
 		pPlayer->m_nButtons &= ~IN_ATTACK2;
+
+#ifndef CLIENT_DLL
+		pPlayer->ClearImmunity();
+#endif
 	}
 	else if ((pPlayer->m_nButtons & IN_ATTACK) && (m_flNextPrimaryAttack <= gpGlobals->curtime ))
 	{
@@ -699,6 +703,10 @@ void CWeaponCSBase::ItemPostFrame()
 #endif
 	PrimaryAttack();
 	m_fLastShotTime = gpGlobals->curtime;
+
+#ifndef CLIENT_DLL
+	pPlayer->ClearImmunity();
+#endif
 	}
 	else if ( pPlayer->m_nButtons & IN_RELOAD && GetMaxClip1() != WEAPON_NOCLIP && !m_bInReload && m_flNextPrimaryAttack < gpGlobals->curtime)
 	{

@@ -39,6 +39,8 @@
 #include "history_resource.h"
 #include "ragdoll_shared.h"
 #include "collisionutils.h"
+#include "vguicenterprint.h"
+#include <vgui/ILocalize.h>
 
 // NVNT - haptics system for spectating
 #include "haptics/haptic_utils.h"
@@ -785,6 +787,9 @@ IMPLEMENT_CLIENTCLASS_DT( C_CSPlayer, DT_CSPlayer, CCSPlayer )
 	RecvPropInt( RECVINFO( m_ArmorValue ) ),
 	RecvPropBool( RECVINFO( m_bIsDefusing ) ),
 	RecvPropBool( RECVINFO( m_bResumeZoom ) ),
+	RecvPropFloat( RECVINFO( m_fImmuneToDamageTime ) ),
+	RecvPropBool( RECVINFO( m_bImmunity ) ),
+	RecvPropBool( RECVINFO( m_bHasMovedSinceSpawn ) ),
 	RecvPropInt( RECVINFO( m_iLastZoom ) ),
 
 #ifdef CS_SHIELD_ENABLED
@@ -837,6 +842,11 @@ C_CSPlayer::C_CSPlayer() :
 	view->SetScreenOverlayMaterial( NULL );
 
     m_bPlayingFreezeCamSound = false;
+
+	m_bWasWarmupPeriod = false;
+	m_bLastWarmupPaused = false;
+	m_nLastWarmupSec = -1;
+	m_flNextWarmupCenterPrintTime = 0.0f;
 }
 
 
@@ -1326,9 +1336,88 @@ void C_CSPlayer::ClientThink()
 		m_fNextThinkPushAway =  gpGlobals->curtime + PUSHAWAY_THINK_INTERVAL;
 	}
 
+	static ConVarRef mp_respawn_immunitytime( "mp_respawn_immunitytime" );
+	float flImmuneTime = mp_respawn_immunitytime.GetFloat();
+	bool bApplyTransparency = ( flImmuneTime > 0 || ( CSGameRules() && CSGameRules()->IsWarmupPeriod() ) )
+		&& ( !IsLocalPlayer() || C_BasePlayer::ShouldDrawLocalPlayer() );
+	if ( bApplyTransparency && m_bImmunity )
+	{
+		if ( GetRenderMode() != kRenderTransAlpha || GetRenderColor().a != 128 )
+		{
+			SetRenderMode( kRenderTransAlpha );
+			SetRenderColorA( 128 );
+		}
+	}
+	else if ( GetRenderMode() != kRenderNormal || GetRenderColor().a != 255 )
+	{
+		SetRenderMode( kRenderNormal, true );
+		SetRenderColorA( 255 );
+	}
+
 	// NVNT - check for spectating forces
 	if ( IsLocalPlayer() )
 	{
+		if ( CSGameRules() && CSGameRules()->IsWarmupPeriod() )
+		{
+			bool bFreezeCountdown = CSGameRules()->IsWarmupFreezeActive();
+			bool bPaused = !bFreezeCountdown && CSGameRules()->IsWarmupPeriodPaused();
+			int nTimeLeftInSec = bFreezeCountdown
+				? MAX( 1, (int)ceil( CSGameRules()->GetWarmupFreezeRemainingTime() ) )
+				: MAX( 0, (int)ceil( CSGameRules()->GetWarmupRemainingTime() ) );
+			int nStateKey = ( bFreezeCountdown ? 2 : ( bPaused ? 1 : 0 ) ) * 10000 + nTimeLeftInSec;
+
+			if ( !m_bWasWarmupPeriod || bPaused != m_bLastWarmupPaused || nStateKey != m_nLastWarmupSec || gpGlobals->curtime >= m_flNextWarmupCenterPrintTime )
+			{
+				m_bWasWarmupPeriod = true;
+				m_bLastWarmupPaused = bPaused;
+				m_nLastWarmupSec = nStateKey;
+				m_flNextWarmupCenterPrintTime = gpGlobals->curtime + 1.0f;
+
+				if ( internalCenterPrint && g_pVGuiLocalize )
+				{
+					wchar_t szNotice[128] = L"";
+					if ( bFreezeCountdown )
+					{
+						wchar_t wzSec[16];
+						V_snwprintf( wzSec, ARRAYSIZE( wzSec ), L"%d", nTimeLeftInSec );
+						const wchar_t *pFmt = g_pVGuiLocalize->Find( "#Cstrike_TitlesTXT_Match_Starting_In" );
+						if ( pFmt )
+							g_pVGuiLocalize->ConstructString( szNotice, sizeof( szNotice ), pFmt, 1, wzSec );
+					}
+					else if ( bPaused )
+					{
+						const wchar_t *pFmt = g_pVGuiLocalize->Find( "#Cstrike_TitlesTXT_Warmup_Paused" );
+						if ( pFmt )
+							V_wcsncpy( szNotice, pFmt, sizeof( szNotice ) );
+					}
+					else
+					{
+						wchar_t wzTime[16];
+						V_snwprintf( wzTime, ARRAYSIZE( wzTime ), L"%d:%02d", nTimeLeftInSec / 60, nTimeLeftInSec % 60 );
+						const char *pszToken = ( nTimeLeftInSec <= 5 ) ? "#Cstrike_TitlesTXT_Warmup_Ending" : "#Cstrike_TitlesTXT_Warmup_Period";
+						const wchar_t *pFmt = g_pVGuiLocalize->Find( pszToken );
+						if ( pFmt )
+							g_pVGuiLocalize->ConstructString( szNotice, sizeof( szNotice ), pFmt, 1, wzTime );
+					}
+
+					if ( szNotice[0] != L'\0' )
+					{
+						internalCenterPrint->Print( szNotice );
+					}
+				}
+			}
+		}
+		else if ( m_bWasWarmupPeriod )
+		{
+			m_bWasWarmupPeriod = false;
+			m_bLastWarmupPaused = false;
+			m_nLastWarmupSec = -1;
+			m_flNextWarmupCenterPrintTime = 0.0f;
+			if ( internalCenterPrint )
+			{
+				internalCenterPrint->Clear();
+			}
+		}
 		if ( GetTeamNumber() == TEAM_SPECTATOR || !this->IsAlive() || GetLocalOrInEyeCSPlayer() != this )
 		{
 			if (!inSpectating_Haptics)

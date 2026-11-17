@@ -74,6 +74,10 @@
 #include "econ_wearable.h"
 #endif
 
+#ifdef CSTRIKE_DLL
+#include "cs_gamerules.h"
+#endif
+
 // NVNT haptic utils
 #include "haptics/haptic_utils.h"
 
@@ -5284,6 +5288,12 @@ void CBasePlayer::NotifyNearbyRadiationSource( float flRange )
 
 void CBasePlayer::AllowImmediateDecalPainting()
 {
+#ifdef CSTRIKE_DLL
+	// No decal expediting during warmup
+	if ( CSGameRules() && CSGameRules()->IsWarmupPeriod() )
+		return;
+#endif
+
 	m_flNextDecalTime = gpGlobals->curtime;
 }
 

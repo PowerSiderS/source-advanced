@@ -91,6 +91,21 @@ public:
 
 	// Stuff that is shared between client and server.
 	bool IsFreezePeriod();
+	bool IsWarmupPeriod() const;
+	float GetWarmupPeriodEndTime() const;
+	bool IsWarmupPeriodPaused() const;
+	void SetWarmupPeriodStartTime( float fl ) { m_fWarmupPeriodStart = fl; }
+	float GetWarmupPeriodStartTime( void ) const { return m_fWarmupPeriodStart; }
+	float GetWarmupRemainingTime() const;
+	bool IsWarmupFreezeActive() const { return m_fWarmupPeriodEnd > 0.0f; }
+	float GetWarmupFreezeRemainingTime() const { return ( m_fWarmupPeriodEnd > 0.0f ) ? (float)( m_fWarmupPeriodEnd - gpGlobals->curtime ) : 0.0f; }
+
+#ifndef CLIENT_DLL
+	void StartWarmup( void );
+	void EndWarmup( void );
+#endif
+
+	void SetIsWarmupPeriod( bool bIsWarmup ) { m_bWarmupPeriod = bIsWarmup; }
 
 	virtual bool ShouldCollide( int collisionGroup0, int collisionGroup1 );
 
@@ -131,6 +146,9 @@ private:
 	float GetAmountOfEntityVisible(Vector & src, CBaseEntity *player); // returns a value from 0 to 1 that is the percentage of player visible from src.
 
 	CNetworkVar( bool, m_bFreezePeriod );	 // TRUE at beginning of round, set to FALSE when the period expires
+	CNetworkVar( bool, m_bWarmupPeriod );
+	CNetworkVar( float, m_fWarmupPeriodEnd ); // OBSOLETE. LEFT IN FOR DEMO COMPATIBILITY.
+	CNetworkVar( float, m_fWarmupPeriodStart );
 	CNetworkVar( int, m_iRoundTime );		 // (From mp_roundtime) - How many seconds long this round is.
 	CNetworkVar( float, m_fRoundStartTime ); // time round has started
 	CNetworkVar( float, m_flGameStartTime );
@@ -408,6 +426,7 @@ public:
 
 	int m_iLoserBonus;			// SupraFiend: the amount of money the losing team gets. This scales up as they lose more rounds in a row
 	float m_tmNextPeriodicThink;
+	float m_fWarmupNextChatNoticeTime;
 
 
 	// HOSTAGE RESCUE VARIABLES
@@ -526,6 +545,7 @@ public:
 
 private:
 	bool m_bSwitchingTeamsAtRoundReset;
+	float m_flLastThinkTime;
 };
 
 //-----------------------------------------------------------------------------

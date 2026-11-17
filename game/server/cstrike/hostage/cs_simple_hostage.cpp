@@ -138,6 +138,9 @@ bool CHostage::CSAnim_CanMove()
 //-----------------------------------------------------------------------------------------------------
 void CHostage::Spawn( void )
 {
+	if ( CSGameRules() && CSGameRules()->IsWarmupPeriod() )
+		return;
+
 	Precache();
 
 	// round-robin through the hostage models
@@ -1021,6 +1024,16 @@ void CHostage::HostageUse( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TY
 	CCSPlayer *user = ToCSPlayer( pActivator );
 	if (user == NULL)
 	{
+		return;
+	}
+
+	if ( CSGameRules() && CSGameRules()->IsWarmupPeriod() )
+	{
+		if ( user->m_iNextTimeCheck < gpGlobals->curtime )
+		{
+			ClientPrint( user, HUD_PRINTCENTER, "#Cstrike_TitlesTXT_Cannot_Move_Hostages_Warmup" );
+			user->m_iNextTimeCheck = (int)(gpGlobals->curtime + 1.0f);
+		}
 		return;
 	}
 

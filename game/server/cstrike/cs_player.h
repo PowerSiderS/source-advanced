@@ -605,6 +605,9 @@ public:
 	CNetworkVar( bool, m_bResumeZoom );
 	CNetworkVar( int , m_iLastZoom ); // after firing a shot, set the FOV to 90, and after showing the animation, bring the FOV back to last zoom level.
 	CNetworkVar( bool, m_bIsDefusing );			// tracks whether this player is currently defusing a bomb
+	CNetworkVar( float, m_fImmuneToDamageTime ); // When spawn damage immunity will expire
+	CNetworkVar( bool, m_bImmunity );			// tracks whether this player is currently immune
+	CNetworkVar( bool, m_bHasMovedSinceSpawn );	// Whether player has moved from spawn position
 	int m_LastHitGroup;			// the last body region that took damage
 	//=============================================================================
 	// HPE_BEGIN:
@@ -733,6 +736,8 @@ public:
 
 	void SurpressLadderChecks( const Vector& pos, const Vector& normal );
 	bool CanGrabLadder( const Vector& pos, const Vector& normal );
+
+	void ClearImmunity( void );
 
 	void SwitchTeamsAtRoundReset( void ) { m_switchTeamsOnNextRoundReset = true; }
 	bool WillSwitchTeamsAtRoundReset( void ) { return m_switchTeamsOnNextRoundReset; }

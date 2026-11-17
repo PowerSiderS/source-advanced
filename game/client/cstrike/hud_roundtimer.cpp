@@ -91,12 +91,13 @@ bool CHudRoundTimer::ShouldDraw()
 {
 	//necessary?
 	C_CSPlayer *pPlayer = C_CSPlayer::GetLocalCSPlayer();
-	if ( pPlayer )
-	{
-		return !pPlayer->IsObserver();
-	}
+	if ( !pPlayer || pPlayer->IsObserver() )
+		return false;
 
-	return false;
+	if ( CSGameRules() && CSGameRules()->IsWarmupPeriodPaused() )
+		return false;
+
+	return true;
 }
 
 void CHudRoundTimer::Think()
@@ -107,6 +108,17 @@ void CHudRoundTimer::Think()
 
 	int timer = (int)ceil( pRules->GetRoundRemainingTime() );
 
+	if ( pRules->IsWarmupPeriod() )
+	{
+		if ( pRules->IsWarmupFreezeActive() )
+		{
+			timer = (int)ceil( pRules->GetWarmupFreezeRemainingTime() );
+		}
+		else if ( !pRules->IsWarmupPeriodPaused() )
+		{
+			timer = (int)ceil( pRules->GetWarmupRemainingTime() );
+		}
+	}
 	if ( pRules->IsFreezePeriod() )
 	{
 		// in freeze period countdown to round start time
@@ -233,6 +245,17 @@ void CHudRoundTimer::Paint()
 		// Normal round timer logic
 		int timer = (int)ceil( pRules->GetRoundRemainingTime() );
 
+		if ( pRules->IsWarmupPeriod() )
+		{
+			if ( pRules->IsWarmupFreezeActive() )
+			{
+				timer = (int)ceil( pRules->GetWarmupFreezeRemainingTime() );
+			}
+			else if ( !pRules->IsWarmupPeriodPaused() )
+			{
+				timer = (int)ceil( pRules->GetWarmupRemainingTime() );
+			}
+		}
 		if ( pRules->IsFreezePeriod() )
 		{
 			timer = (int)ceil( pRules->GetRoundStartTime() - gpGlobals->curtime );

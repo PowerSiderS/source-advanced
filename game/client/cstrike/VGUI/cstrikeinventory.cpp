@@ -1013,6 +1013,7 @@ private:
 	int m_nLeftColW;
 	bool m_bStickerPickerMode;
 	bool m_bKnifeSkinPickerMode;
+	bool m_bSkintonePickerMode;
 	int m_iActiveStickerSlot;
 	int m_iCurrentPage;
 	int m_iTotalPages;
@@ -1024,6 +1025,7 @@ private:
 	char m_szPreviewKnifeSkinByIdx[32][64];
 	char m_szPreviewGloveId[64];
 	char m_szPreviewSleeveKey[64];
+	char m_szPreviewSkintoneKey[64];
 	char m_szSearchFilter[64];
 
 	int m_nTileItemIndices[INV_GRID_PAGE_SIZE];
@@ -1087,6 +1089,7 @@ CCSInventoryPanel::CCSInventoryPanel( vgui::VPANEL parent )
 	, m_nLeftColW( 0 )
 	, m_bStickerPickerMode( false )
 	, m_bKnifeSkinPickerMode( false )
+	, m_bSkintonePickerMode( false )
 	, m_iActiveStickerSlot( 0 )
 	, m_iCurrentPage( 0 )
 	, m_iTotalPages( 1 )
@@ -1307,6 +1310,7 @@ void CCSInventoryPanel::LoadEquippedStateForActiveTeam()
 	}
 	V_strncpy( m_szPreviewGloveId, Inventory_GetEquippedGloveId( eTeam ), sizeof( m_szPreviewGloveId ) );
 	V_strncpy( m_szPreviewSleeveKey, Inventory_GetEquippedSleeveKey( eTeam ), sizeof( m_szPreviewSleeveKey ) );
+	V_strncpy( m_szPreviewSkintoneKey, Inventory_GetEquippedSkintoneKey( eTeam ), sizeof( m_szPreviewSkintoneKey ) );
 }
 
 void CCSInventoryPanel::OpenInventory()
@@ -1319,6 +1323,7 @@ void CCSInventoryPanel::OpenInventory()
 	LoadEquippedStateForActiveTeam();
 	m_bStickerPickerMode = false;
 	m_bKnifeSkinPickerMode = false;
+	m_bSkintonePickerMode = false;
 	m_iCurrentPage = 0;
 
 	InvalidateLayout( true, true );
@@ -1574,8 +1579,8 @@ void CCSInventoryPanel::PerformLayout()
 	int ry = bodyY + 8;
 
 	bool bShowStickers = ( GetActiveSkinWeaponIndex() >= 0 );
-	bool bShowKnifeSlot = ( GetActiveMode() == INV_MODE_KNIFE );
-	bool bShowBottomArea = ( bShowStickers || bShowKnifeSlot );
+	bool bShowSingleBottomSlot = ( GetActiveMode() == INV_MODE_KNIFE || GetActiveMode() == INV_MODE_SLEEVE );
+	bool bShowBottomArea = ( bShowStickers || bShowSingleBottomSlot );
 
 	int smallBtnH = clamp( bodyH / 22, 20, 30 );
 	int eqBtnH    = clamp( bodyH / 20, 22, 32 );
@@ -1628,7 +1633,7 @@ void CCSInventoryPanel::PerformLayout()
 		m_pFillAllStickersBtn->SetBounds( rx, actionY, halfW, smallBtnH );
 		m_pClearAllStickersBtn->SetBounds( rx + halfW + 8, actionY, rw - halfW - 8, smallBtnH );
 	}
-	else if ( bShowKnifeSlot )
+	else if ( bShowSingleBottomSlot )
 	{
 		m_pStickerHeaderLabel->SetBounds( rx, ry, rw, hdrH );
 		ry += hdrH + 3;
@@ -1903,6 +1908,20 @@ void CCSInventoryPanel::RebuildGrid()
 				matchingIndices.AddToTail( i );
 		}
 	}
+	else if ( eMode == INV_MODE_SLEEVE && m_bSkintonePickerMode )
+	{
+		m_pGridHeaderLabel->SetText( "#CSInventory_Header_Skintones" );
+		m_pBackToSkinsBtn->SetText( "#CSInventory_BackToSleeves" );
+		m_pBackToSkinsBtn->SetVisible( true );
+
+		int nTones = Inventory_GetSkintoneCount();
+		for ( int i = 0; i < nTones; ++i )
+		{
+			const InventorySkintoneDef_t *pTone = Inventory_GetSkintoneDef( i );
+			if ( pTone && ( ContainsCaseInsensitive( pTone->pszDisplayName, m_szSearchFilter ) || ContainsCaseInsensitive( pTone->pszKey, m_szSearchFilter ) ) )
+				matchingIndices.AddToTail( i );
+		}
+	}
 	else if ( eMode == INV_MODE_SLEEVE )
 	{
 		m_pGridHeaderLabel->SetText( "#CSInventory_Header_Sleeves" );
@@ -2054,6 +2073,16 @@ void CCSInventoryPanel::RebuildGrid()
 			bool bSelected = ( pGlove && !V_stricmp( m_szPreviewGloveId, pGlove->pszId ) );
 			m_pGridTiles[slot]->ConfigureTile( pGlove ? pGlove->pszDisplayName : "", GetRarityColor( pGlove ? pGlove->eRarity : RARITY_STOCK ), Color( 255, 255, 255, 255 ), nTexID, nEqMask, bSelected, false );
 		}
+		else if ( eMode == INV_MODE_SLEEVE && m_bSkintonePickerMode )
+		{
+			m_bTileIsResetItem[slot] = false;
+			m_nTileItemIndices[slot] = itemIdx;
+			const InventorySkintoneDef_t *pTone = Inventory_GetSkintoneDef( itemIdx );
+			int nTexID = GetOrLoadPathVGuiTexture( m_IconTexCache, pTone ? pTone->pszIconPath : "" );
+			int nEqMask = pTone ? Inventory_GetSkintoneEquippedMask( pTone->pszKey ) : INV_TEAMMASK_NONE;
+			bool bSelected = ( pTone && !V_stricmp( m_szPreviewSkintoneKey, pTone->pszKey ) );
+			m_pGridTiles[slot]->ConfigureTile( pTone ? pTone->pszDisplayName : "", GetRarityColor( pTone ? pTone->eRarity : RARITY_STOCK ), Color( 255, 255, 255, 255 ), nTexID, nEqMask, bSelected, false );
+		}
 		else if ( eMode == INV_MODE_SLEEVE )
 		{
 			m_bTileIsResetItem[slot] = false;
@@ -2095,8 +2124,8 @@ void CCSInventoryPanel::RefreshInspectAndStickerControls()
 	int nSkinWep = GetActiveSkinWeaponIndex();
 	bool bSupported = ( eMode != INV_MODE_UNSUPPORTED );
 	bool bShowStickers = ( nSkinWep >= 0 );
-	bool bShowKnifeSlot = ( eMode == INV_MODE_KNIFE );
-	bool bShowBottomArea = ( bShowStickers || bShowKnifeSlot );
+	bool bShowSingleBottomSlot = ( eMode == INV_MODE_KNIFE || eMode == INV_MODE_SLEEVE );
+	bool bShowBottomArea = ( bShowStickers || bShowSingleBottomSlot );
 
 	m_pEquipCTBtn->SetEnabled( bSupported );
 	m_pEquipTBtn->SetEnabled( bSupported );
@@ -2115,7 +2144,7 @@ void CCSInventoryPanel::RefreshInspectAndStickerControls()
 	}
 	for ( int s = 0; s < INV_MAX_STICKER_SLOTS; ++s )
 	{
-		bool bSlotVis = bShowStickers || ( bShowKnifeSlot && s == 0 );
+		bool bSlotVis = bShowStickers || ( bShowSingleBottomSlot && s == 0 );
 		m_pStickerSlotBtns[s]->SetVisible( bSlotVis );
 		if ( !bSlotVis )
 		{
@@ -2250,14 +2279,42 @@ void CCSInventoryPanel::RefreshInspectAndStickerControls()
 	else if ( eMode == INV_MODE_SLEEVE )
 	{
 		const InventorySleeveDef_t *pSleeve = Inventory_FindSleeveByKey( m_szPreviewSleeveKey );
+		const InventorySkintoneDef_t *pTone = Inventory_FindSkintoneByKey( m_szPreviewSkintoneKey );
+		bool bCustomTone = ( pTone && V_strcmp( pTone->pszKey, "-1" ) != 0 );
+
 		char szCat[48], szRarity[48], szSub[128], szDefaultSleeve[64];
 		LocUTF8( "#CSInventory_Header_Sleeves", "SLEEVES", szCat, sizeof( szCat ) );
 		GetLocalizedRarityLabel( pSleeve ? pSleeve->eRarity : RARITY_STOCK, szRarity, sizeof( szRarity ) );
 		LocUTF8( "#CSInventory_DefaultSleeve", "Default Sleeve", szDefaultSleeve, sizeof( szDefaultSleeve ) );
-		V_snprintf( szSub, sizeof( szSub ), "%s  |  %s", szCat, szRarity );
+		if ( bCustomTone )
+			V_snprintf( szSub, sizeof( szSub ), "%s  |  %s", szCat, pTone->pszDisplayName );
+		else
+			V_snprintf( szSub, sizeof( szSub ), "%s  |  %s", szCat, szRarity );
 		m_pInspectWeaponLabel->SetText( szSub );
 		m_pInspectSkinLabel->SetText( pSleeve ? pSleeve->pszDisplayName : szDefaultSleeve );
 		m_pInspectSkinLabel->SetFgColor( pSleeve && !V_strcmp( pSleeve->pszKey, "-1" ) ? m_Palette.clrTextPrimary : GetRarityColor( pSleeve ? pSleeve->eRarity : RARITY_RESTRICTED ) );
+
+		m_pStickerHeaderLabel->SetText( "#CSInventory_SkintoneHeader" );
+		m_pStickerSlotBtns[0]->SetEnabled( true );
+		m_pFillAllStickersBtn->SetText( m_bSkintonePickerMode ? "#CSInventory_BackToSleeves" : "#CSInventory_SkintoneBrowse" );
+		m_pFillAllStickersBtn->SetEnabled( true );
+		m_pClearAllStickersBtn->SetText( "#CSInventory_SkintoneResetDefault" );
+		m_pClearAllStickersBtn->SetEnabled( bCustomTone );
+
+		char szDefaultTone[64];
+		LocUTF8( "#CSInventory_SkintoneDefault", "Default (Faction)", szDefaultTone, sizeof( szDefaultTone ) );
+		int nToneTex = GetOrLoadPathVGuiTexture( m_IconTexCache, pTone ? pTone->pszIconPath : "vgui/inventory/sleeves/default_faction" );
+		m_pStickerSlotBtns[0]->SetSlotData( nToneTex, bCustomTone ? pTone->pszDisplayName : "", m_bSkintonePickerMode, szDefaultTone );
+		if ( bCustomTone )
+		{
+			m_pStickerClearBtns[0]->SetVisible( true );
+			m_pStickerClearBtns[0]->MoveToFront();
+			m_pStickerClearBtns[0]->Repaint();
+		}
+		else
+		{
+			m_pStickerClearBtns[0]->SetVisible( false );
+		}
 	}
 }
 
@@ -2487,6 +2544,7 @@ void CCSInventoryPanel::OnCommand( const char *command )
 					m_iSelectedWeaponIndex = i;
 					m_bStickerPickerMode = false;
 					m_bKnifeSkinPickerMode = false;
+					m_bSkintonePickerMode = false;
 					m_iCurrentPage = 0;
 				}
 				break;
@@ -2507,6 +2565,7 @@ void CCSInventoryPanel::OnCommand( const char *command )
 			m_iSelectedWeaponIndex = m_nVisibleWeaponIndices[btnSlot];
 			m_bStickerPickerMode = false;
 			m_bKnifeSkinPickerMode = false;
+			m_bSkintonePickerMode = false;
 			m_iCurrentPage = 0;
 			InvalidateLayout( false );
 			RebuildWeaponList();
@@ -2520,6 +2579,7 @@ void CCSInventoryPanel::OnCommand( const char *command )
 	{
 		m_bStickerPickerMode = false;
 		m_bKnifeSkinPickerMode = false;
+		m_bSkintonePickerMode = false;
 		m_iCurrentPage = 0;
 		RebuildGrid();
 		RefreshInspectAndStickerControls();
@@ -2557,6 +2617,14 @@ void CCSInventoryPanel::OnCommand( const char *command )
 			}
 			return;
 		}
+		if ( GetActiveMode() == INV_MODE_SLEEVE )
+		{
+			m_bSkintonePickerMode = !m_bSkintonePickerMode;
+			m_iCurrentPage = 0;
+			RebuildGrid();
+			RefreshInspectAndStickerControls();
+			return;
+		}
 		int slot = clamp( atoi( command + 13 ), 0, INV_MAX_STICKER_SLOTS - 1 );
 		m_iActiveStickerSlot = slot;
 		m_bStickerPickerMode = true;
@@ -2582,6 +2650,17 @@ void CCSInventoryPanel::OnCommand( const char *command )
 			RebuildGrid();
 			char szMsg[128];
 			LocUTF8( "#CSInventory_Status_KnifeSkinCleared", "Knife skin reset to Vanilla (press Equip to save)", szMsg, sizeof( szMsg ) );
+			SetStatusBanner( szMsg, m_Palette.clrTextSecondary );
+			return;
+		}
+		if ( GetActiveMode() == INV_MODE_SLEEVE )
+		{
+			V_strncpy( m_szPreviewSkintoneKey, "-1", sizeof( m_szPreviewSkintoneKey ) );
+			RefreshInspectAndStickerControls();
+			RefreshPreviewPanel();
+			RebuildGrid();
+			char szMsg[128];
+			LocUTF8( "#CSInventory_Status_SkintoneCleared", "Arm skintone reset to Faction default (press Equip to save)", szMsg, sizeof( szMsg ) );
 			SetStatusBanner( szMsg, m_Palette.clrTextSecondary );
 			return;
 		}
@@ -2612,6 +2691,14 @@ void CCSInventoryPanel::OnCommand( const char *command )
 				RebuildGrid();
 				RefreshInspectAndStickerControls();
 			}
+			return;
+		}
+		if ( GetActiveMode() == INV_MODE_SLEEVE )
+		{
+			m_bSkintonePickerMode = !m_bSkintonePickerMode;
+			m_iCurrentPage = 0;
+			RebuildGrid();
+			RefreshInspectAndStickerControls();
 			return;
 		}
 		int nSkinWep = GetActiveSkinWeaponIndex();
@@ -2654,6 +2741,17 @@ void CCSInventoryPanel::OnCommand( const char *command )
 			RebuildGrid();
 			char szMsg[128];
 			LocUTF8( "#CSInventory_Status_KnifeSkinCleared", "Knife skin reset to Vanilla (press Equip to save)", szMsg, sizeof( szMsg ) );
+			SetStatusBanner( szMsg, m_Palette.clrTextSecondary );
+			return;
+		}
+		if ( GetActiveMode() == INV_MODE_SLEEVE )
+		{
+			V_strncpy( m_szPreviewSkintoneKey, "-1", sizeof( m_szPreviewSkintoneKey ) );
+			RefreshInspectAndStickerControls();
+			RefreshPreviewPanel();
+			RebuildGrid();
+			char szMsg[128];
+			LocUTF8( "#CSInventory_Status_SkintoneCleared", "Arm skintone reset to Faction default (press Equip to save)", szMsg, sizeof( szMsg ) );
 			SetStatusBanner( szMsg, m_Palette.clrTextSecondary );
 			return;
 		}
@@ -2743,6 +2841,13 @@ void CCSInventoryPanel::OnCommand( const char *command )
 				V_strncpy( m_szPreviewGloveId, pGlove->pszId, sizeof( m_szPreviewGloveId ) );
 			}
 		}
+		else if ( eMode == INV_MODE_SLEEVE && m_bSkintonePickerMode )
+		{
+			if ( const InventorySkintoneDef_t *pTone = Inventory_GetSkintoneDef( itemIdx ) )
+			{
+				V_strncpy( m_szPreviewSkintoneKey, pTone->pszKey, sizeof( m_szPreviewSkintoneKey ) );
+			}
+		}
 		else if ( eMode == INV_MODE_SLEEVE )
 		{
 			if ( const InventorySleeveDef_t *pSleeve = Inventory_GetSleeveDef( itemIdx ) )
@@ -2820,12 +2925,16 @@ void CCSInventoryPanel::OnCommand( const char *command )
 		}
 		else if ( eMode == INV_MODE_SLEEVE )
 		{
-			Inventory_EquipSleeve( nEquipMask, m_szPreviewSleeveKey );
+			Inventory_EquipSleeve( nEquipMask, m_szPreviewSleeveKey, m_szPreviewSkintoneKey );
 			const InventorySleeveDef_t *pSleeve = Inventory_FindSleeveByKey( m_szPreviewSleeveKey );
-			if ( pSleeve )
-				V_strncpy( szItemLabel, pSleeve->pszDisplayName, sizeof( szItemLabel ) );
+			const InventorySkintoneDef_t *pTone = Inventory_FindSkintoneByKey( m_szPreviewSkintoneKey );
+			char szDefaultSleeve[64];
+			LocUTF8( "#CSInventory_DefaultSleeve", "Default Sleeve", szDefaultSleeve, sizeof( szDefaultSleeve ) );
+			const char *pszSleeveDisp = pSleeve ? pSleeve->pszDisplayName : szDefaultSleeve;
+			if ( pTone && V_strcmp( pTone->pszKey, "-1" ) != 0 )
+				V_snprintf( szItemLabel, sizeof( szItemLabel ), "%s | %s", pszSleeveDisp, pTone->pszDisplayName );
 			else
-				LocUTF8( "#CSInventory_DefaultSleeve", "Default Sleeve", szItemLabel, sizeof( szItemLabel ) );
+				V_strncpy( szItemLabel, pszSleeveDisp, sizeof( szItemLabel ) );
 		}
 
 		RebuildGrid();

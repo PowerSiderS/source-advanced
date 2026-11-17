@@ -354,6 +354,12 @@ int C_BaseViewModel::DrawModel( int flags )
 		
 	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
 	C_BaseCombatWeapon *pWeapon = GetOwningWeapon();
+#ifdef CSTRIKE_DLL
+	if ( ( flags & STUDIO_RENDER ) && pPlayer && GetOwner() == pPlayer )
+	{
+		UpdateAllViewmodelAddons();
+	}
+#endif
 	int ret;
 	// If the local player's overriding the viewmodel rendering, let him do it
 	if ( pPlayer && pPlayer->IsOverridingViewmodel() )
@@ -799,7 +805,21 @@ void C_ViewmodelAttachmentModel::ApplyArmAppearance( void )
 {
 	if ( m_nPendingSkintone != -1 )
 	{
-		m_nSkin = m_nPendingSkintone;
+		int nSkintone = m_nPendingSkintone;
+		if ( nSkintone == 7 ) // BARE_ARM_44 enum index maps to skin 6 on 7-skin MDLs
+		{
+			nSkintone = 6;
+		}
+		if ( CStudioHdr *pHdr = GetModelPtr() )
+		{
+			int nSkins = Max( 1, pHdr->numskinfamilies() );
+			if ( nSkintone >= nSkins )
+			{
+				nSkintone = ( nSkintone == 6 && nSkins == 6 ) ? 1 : 0;
+			}
+			nSkintone = clamp( nSkintone, 0, nSkins - 1 );
+		}
+		m_nSkin = nSkintone;
 	}
 
 	if ( GetModelPtr() )
@@ -945,6 +965,8 @@ struct ViewmodelStickerSlotState_t
 {
 	CHandle<C_BaseViewModel> hViewModel;
 	int nWeaponIdx;
+	int nLastTeam;
+	unsigned int nLastLoadoutRev;
 	CHandle<C_ViewmodelAttachmentModel> hStickers[INV_MAX_STICKER_SLOTS];
 };
 
@@ -977,6 +999,8 @@ static int FindOrCreateStickerStateIndex( C_BaseViewModel *pVM, bool bCreate )
 	int idx = s_vecViewmodelStickers.AddToTail();
 	s_vecViewmodelStickers[idx].hViewModel = pVM;
 	s_vecViewmodelStickers[idx].nWeaponIdx = -1;
+	s_vecViewmodelStickers[idx].nLastTeam = -1;
+	s_vecViewmodelStickers[idx].nLastLoadoutRev = 0;
 	return idx;
 }
 
@@ -1058,7 +1082,17 @@ static void UpdateViewmodelStickers( C_BaseViewModel *pVM, C_CSPlayer *pPlayer )
 		return;
 	}
 
+	int nTeam = pPlayer->GetTeamNumber();
+	unsigned int nLoadoutRev = Inventory_GetLoadoutRevision();
 	int idx = FindOrCreateStickerStateIndex( pVM, false );
+	if ( idx != -1 &&
+		 s_vecViewmodelStickers[idx].nWeaponIdx == nCurWep &&
+		 s_vecViewmodelStickers[idx].nLastTeam == nTeam &&
+		 s_vecViewmodelStickers[idx].nLastLoadoutRev == nLoadoutRev )
+	{
+		return;
+	}
+
 	if ( idx != -1 && s_vecViewmodelStickers[idx].nWeaponIdx != nCurWep )
 	{
 		RemoveViewmodelStickers( pVM );
@@ -1090,6 +1124,8 @@ static void UpdateViewmodelStickers( C_BaseViewModel *pVM, C_CSPlayer *pPlayer )
 			return;
 		s_vecViewmodelStickers[idx].nWeaponIdx = nCurWep;
 	}
+	s_vecViewmodelStickers[idx].nLastTeam = nTeam;
+	s_vecViewmodelStickers[idx].nLastLoadoutRev = nLoadoutRev;
 
 	for ( int s = 0; s < INV_MAX_STICKER_SLOTS; ++s )
 	{

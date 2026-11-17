@@ -177,6 +177,14 @@ struct InventorySleeveDef_t
 	EInventoryRarity eRarity;
 };
 
+struct InventorySkintoneDef_t
+{
+	const char *pszKey;          // Value for cl_arm_skintone (e.g. "-1", "0".."6")
+	const char *pszDisplayName;
+	const char *pszIconPath;
+	EInventoryRarity eRarity;
+};
+
 struct InventoryWeaponLoadout_t
 {
 	char szSkinKey[64];
@@ -233,12 +241,23 @@ const InventorySleeveDef_t *Inventory_GetSleeveDef( int iIndex );
 const InventorySleeveDef_t *Inventory_FindSleeveByKey( const char *pszKey );
 const char *Inventory_GetEquippedSleeveKey( EInventoryTeam eTeam );
 int Inventory_GetSleeveEquippedMask( const char *pszSleeveKey );
-void Inventory_EquipSleeve( int nTeamMask, const char *pszSleeveKey );
+void Inventory_EquipSleeve( int nTeamMask, const char *pszSleeveKey, const char *pszSkintoneKey = NULL );
 
-// Initialization, persistence & team ConVar sync
+// Sleeve / Arm Skintones
+int Inventory_GetSkintoneCount();
+const InventorySkintoneDef_t *Inventory_GetSkintoneDef( int iIndex );
+const InventorySkintoneDef_t *Inventory_FindSkintoneByKey( const char *pszKey );
+const char *Inventory_GetEquippedSkintoneKey( EInventoryTeam eTeam );
+int Inventory_GetSkintoneEquippedMask( const char *pszSkintoneKey );
+void Inventory_EquipSkintone( int nTeamMask, const char *pszSkintoneKey );
+
+// Initialization, persistence, precache & team ConVar sync
 void Inventory_EnsureLoaded();
 void Inventory_SaveLoadout();
 void Inventory_SyncActiveTeamConVars( int nTeamNumber );
+unsigned int Inventory_GetLoadoutRevision();
+void Inventory_PrecacheEquippedAssets();
+void Inventory_ReleasePrecachedAssets();
 
 // Team loadout read/write
 const InventoryWeaponLoadout_t &Inventory_GetWeaponLoadout( int nWep, EInventoryTeam eTeam );

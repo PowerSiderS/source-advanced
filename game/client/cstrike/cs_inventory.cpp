@@ -11,6 +11,9 @@
 #include "weapon_csbase.h"
 #include "c_baseviewmodel.h"
 #include "filesystem.h"
+#include "igamesystem.h"
+#include "materialsystem/imaterialsystem.h"
+#include "materialsystem/itexture.h"
 #include <KeyValues.h>
 #include <ctype.h>
 
@@ -181,6 +184,7 @@ extern ConVar cl_arm_glove_specialist;
 extern ConVar cl_arm_glove_hydra;
 extern ConVar cl_arm_glove_brokenfang;
 extern ConVar cl_arm_sleeve;
+extern ConVar cl_arm_skintone;
 
 static ConVar * const s_pAK47StickerConVars[INV_MAX_STICKER_SLOTS] =
 {
@@ -1402,6 +1406,18 @@ static const InventorySleeveDef_t s_Sleeves[] =
 	{ "wristband",                 "Guerilla Wristband",         ADVANCED_ARMS_DIR "wristband/v_sleeve_wristband.mdl",                    "vgui/inventory/sleeves/wristband",                 RARITY_CLASSIFIED },
 };
 
+static const InventorySkintoneDef_t s_Skintones[] =
+{
+	{ "-1", "Default (Faction)", "vgui/inventory/sleeves/default_faction",    RARITY_STOCK },
+	{ "3",  "Pale Gold (#103)",  "vgui/inventory/skintones/skintone_103",     RARITY_MILSPEC },
+	{ "0",  "Fair (#133)",       "vgui/inventory/skintones/skintone_133",     RARITY_MILSPEC },
+	{ "2",  "Olive Tan (#66)",   "vgui/inventory/skintones/skintone_66",      RARITY_MILSPEC },
+	{ "4",  "Warm Brown (#78)",  "vgui/inventory/skintones/skintone_78",      RARITY_MILSPEC },
+	{ "5",  "Tattooed (#VarF)",  "vgui/inventory/skintones/skintone_pro_varf",RARITY_RESTRICTED },
+	{ "6",  "Dark Brown (#44)",  "vgui/inventory/skintones/skintone_44",      RARITY_MILSPEC },
+	{ "1",  "Deep Dark (#55)",   "vgui/inventory/skintones/skintone_55",      RARITY_MILSPEC },
+};
+
 struct CustomizableWeaponInfo_t
 {
 	const char *pszWeaponKey;
@@ -1627,6 +1643,7 @@ static char s_szKnifeLoadout[INV_TEAM_COUNT][64];
 static char s_szKnifeSkinLoadout[INV_TEAM_COUNT][64];
 static char s_szGloveLoadout[INV_TEAM_COUNT][64];
 static char s_szSleeveLoadout[INV_TEAM_COUNT][64];
+static char s_szSkintoneLoadout[INV_TEAM_COUNT][64];
 static char s_szPreviewGloveId[64] = "default";
 static char s_szPreviewKnifeKey[64] = "0";
 static char s_szPreviewKnifeSkin[64] = "0";
@@ -1634,6 +1651,8 @@ static char s_szPreviewKnifeSkin[64] = "0";
 static bool s_bLoadoutInitialized = false;
 static bool s_bSyncingConVars = false;
 static int s_nLastSyncedTeamNumber = -1;
+static unsigned int s_nLoadoutRevision = 1;
+static CUtlVector<ITexture *> s_vecPrecachedTextures;
 
 static int s_nPreviewSkinToken = 0;
 static int s_nPreviewStickerTokens[INV_MAX_STICKER_SLOTS] = { 0, 1, 2, 3 };
@@ -1736,6 +1755,12 @@ static void NormalizeSleeveKey( const char *pszInput, char *pszOut, int nOutSize
 	V_strncpy( pszOut, pDef ? pDef->pszKey : "-1", nOutSize );
 }
 
+static void NormalizeSkintoneKey( const char *pszInput, char *pszOut, int nOutSize )
+{
+	const InventorySkintoneDef_t *pDef = Inventory_FindSkintoneByKey( pszInput );
+	V_strncpy( pszOut, pDef ? pDef->pszKey : "-1", nOutSize );
+}
+
 static void ResetLoadoutEntry( InventoryWeaponLoadout_t &entry )
 {
 	V_strncpy( entry.szSkinKey, "0", sizeof( entry.szSkinKey ) );
@@ -1790,6 +1815,11 @@ static void PushSleeveToConVar( const char *pszSleeveKey )
 	cl_arm_sleeve.SetValue( ( pszSleeveKey && pszSleeveKey[0] ) ? pszSleeveKey : "-1" );
 }
 
+static void PushSkintoneToConVar( const char *pszSkintoneKey )
+{
+	cl_arm_skintone.SetValue( ( pszSkintoneKey && pszSkintoneKey[0] ) ? pszSkintoneKey : "-1" );
+}
+
 static void PushTeamAllToConVars( EInventoryTeam eTeam )
 {
 	int idx = clamp( (int)eTeam, 0, INV_TEAM_COUNT - 1 );
@@ -1800,6 +1830,7 @@ static void PushTeamAllToConVars( EInventoryTeam eTeam )
 	PushKnifeToConVar( s_szKnifeLoadout[idx], s_szKnifeSkinLoadout[idx] );
 	PushGloveToConVars( s_szGloveLoadout[idx] );
 	PushSleeveToConVar( s_szSleeveLoadout[idx] );
+	PushSkintoneToConVar( s_szSkintoneLoadout[idx] );
 }
 
 static void LoadSingleTeamSection( int nWep, KeyValues *pSection, InventoryWeaponLoadout_t &outEntry )
@@ -1948,6 +1979,7 @@ void Inventory_EnsureLoaded()
 		V_strncpy( s_szKnifeSkinLoadout[t], "0", sizeof( s_szKnifeSkinLoadout[t] ) );
 		V_strncpy( s_szGloveLoadout[t], "default", sizeof( s_szGloveLoadout[t] ) );
 		V_strncpy( s_szSleeveLoadout[t], "-1", sizeof( s_szSleeveLoadout[t] ) );
+		V_strncpy( s_szSkintoneLoadout[t], "-1", sizeof( s_szSkintoneLoadout[t] ) );
 	}
 	ResetLoadoutEntry( s_PreviewLoadout );
 
@@ -1998,11 +2030,21 @@ void Inventory_EnsureLoaded()
 		{
 			NormalizeSleeveKey( pSleeves->GetString( "ct", "-1" ), s_szSleeveLoadout[INV_TEAM_CT], sizeof( s_szSleeveLoadout[INV_TEAM_CT] ) );
 			NormalizeSleeveKey( pSleeves->GetString( "t", "-1" ), s_szSleeveLoadout[INV_TEAM_T], sizeof( s_szSleeveLoadout[INV_TEAM_T] ) );
+			if ( pSleeves->FindKey( "ct_skintone" ) )
+				NormalizeSkintoneKey( pSleeves->GetString( "ct_skintone", "-1" ), s_szSkintoneLoadout[INV_TEAM_CT], sizeof( s_szSkintoneLoadout[INV_TEAM_CT] ) );
+			else
+				NormalizeSkintoneKey( cl_arm_skintone.GetString(), s_szSkintoneLoadout[INV_TEAM_CT], sizeof( s_szSkintoneLoadout[INV_TEAM_CT] ) );
+			if ( pSleeves->FindKey( "t_skintone" ) )
+				NormalizeSkintoneKey( pSleeves->GetString( "t_skintone", "-1" ), s_szSkintoneLoadout[INV_TEAM_T], sizeof( s_szSkintoneLoadout[INV_TEAM_T] ) );
+			else
+				V_strncpy( s_szSkintoneLoadout[INV_TEAM_T], s_szSkintoneLoadout[INV_TEAM_CT], sizeof( s_szSkintoneLoadout[INV_TEAM_T] ) );
 		}
 		else
 		{
 			NormalizeSleeveKey( cl_arm_sleeve.GetString(), s_szSleeveLoadout[INV_TEAM_CT], sizeof( s_szSleeveLoadout[INV_TEAM_CT] ) );
 			V_strncpy( s_szSleeveLoadout[INV_TEAM_T], s_szSleeveLoadout[INV_TEAM_CT], sizeof( s_szSleeveLoadout[INV_TEAM_T] ) );
+			NormalizeSkintoneKey( cl_arm_skintone.GetString(), s_szSkintoneLoadout[INV_TEAM_CT], sizeof( s_szSkintoneLoadout[INV_TEAM_CT] ) );
+			V_strncpy( s_szSkintoneLoadout[INV_TEAM_T], s_szSkintoneLoadout[INV_TEAM_CT], sizeof( s_szSkintoneLoadout[INV_TEAM_T] ) );
 		}
 	}
 	else
@@ -2025,6 +2067,8 @@ void Inventory_EnsureLoaded()
 
 		NormalizeSleeveKey( cl_arm_sleeve.GetString(), s_szSleeveLoadout[INV_TEAM_CT], sizeof( s_szSleeveLoadout[INV_TEAM_CT] ) );
 		V_strncpy( s_szSleeveLoadout[INV_TEAM_T], s_szSleeveLoadout[INV_TEAM_CT], sizeof( s_szSleeveLoadout[INV_TEAM_T] ) );
+		NormalizeSkintoneKey( cl_arm_skintone.GetString(), s_szSkintoneLoadout[INV_TEAM_CT], sizeof( s_szSkintoneLoadout[INV_TEAM_CT] ) );
+		V_strncpy( s_szSkintoneLoadout[INV_TEAM_T], s_szSkintoneLoadout[INV_TEAM_CT], sizeof( s_szSkintoneLoadout[INV_TEAM_T] ) );
 	}
 	pKV->deleteThis();
 
@@ -2069,6 +2113,8 @@ void Inventory_SaveLoadout()
 	{
 		pSleeves->SetString( "ct", s_szSleeveLoadout[INV_TEAM_CT] );
 		pSleeves->SetString( "t", s_szSleeveLoadout[INV_TEAM_T] );
+		pSleeves->SetString( "ct_skintone", s_szSkintoneLoadout[INV_TEAM_CT] );
+		pSleeves->SetString( "t_skintone", s_szSkintoneLoadout[INV_TEAM_T] );
 	}
 
 	pKV->SaveToFile( filesystem, INVENTORY_LOADOUT_FILE, "MOD" );
@@ -2145,7 +2191,12 @@ void Inventory_EquipWeapon( int nWep, int nTeamMask, const char *pszSkinKey, con
 		PushWeaponLoadoutToConVars( nWep, s_WeaponLoadouts[nWep][INV_TEAM_CT] );
 	}
 
+	++s_nLoadoutRevision;
 	Inventory_SaveLoadout();
+	if ( engine && engine->IsInGame() )
+	{
+		Inventory_PrecacheEquippedAssets();
+	}
 }
 
 void Inventory_OnWeaponConVarChanged( int nWep )
@@ -2166,7 +2217,12 @@ void Inventory_OnWeaponConVarChanged( int nWep )
 		s_WeaponLoadouts[nWep][INV_TEAM_CT] = entry;
 		s_WeaponLoadouts[nWep][INV_TEAM_T] = entry;
 	}
+	++s_nLoadoutRevision;
 	Inventory_SaveLoadout();
+	if ( engine && engine->IsInGame() )
+	{
+		Inventory_PrecacheEquippedAssets();
+	}
 }
 
 static void OnWeaponSkinConVarChangeCallback( IConVar *var, const char *pOldValue, float flOldValue )
@@ -2215,7 +2271,12 @@ static void OnKnifeSkinConVarChangeCallback( IConVar *var, const char *pOldValue
 		V_strncpy( s_szKnifeSkinLoadout[INV_TEAM_CT], szNormSkin, sizeof( s_szKnifeSkinLoadout[INV_TEAM_CT] ) );
 		V_strncpy( s_szKnifeSkinLoadout[INV_TEAM_T], szNormSkin, sizeof( s_szKnifeSkinLoadout[INV_TEAM_T] ) );
 	}
+	++s_nLoadoutRevision;
 	Inventory_SaveLoadout();
+	if ( engine && engine->IsInGame() )
+	{
+		Inventory_PrecacheEquippedAssets();
+	}
 }
 
 int Inventory_GetKnifeCount()
@@ -2409,7 +2470,12 @@ void Inventory_EquipKnife( int nTeamMask, const char *pszKnifeKey, const char *p
 	{
 		PushKnifeToConVar( s_szKnifeLoadout[INV_TEAM_CT], s_szKnifeSkinLoadout[INV_TEAM_CT] );
 	}
+	++s_nLoadoutRevision;
 	Inventory_SaveLoadout();
+	if ( engine && engine->IsInGame() )
+	{
+		Inventory_PrecacheEquippedAssets();
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -2511,7 +2577,12 @@ void Inventory_EquipGlove( int nTeamMask, const char *pszGloveId )
 	{
 		PushGloveToConVars( szNorm );
 	}
+	++s_nLoadoutRevision;
 	Inventory_SaveLoadout();
+	if ( engine && engine->IsInGame() )
+	{
+		Inventory_PrecacheEquippedAssets();
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -2578,7 +2649,7 @@ int Inventory_GetSleeveEquippedMask( const char *pszSleeveKey )
 	return nMask;
 }
 
-void Inventory_EquipSleeve( int nTeamMask, const char *pszSleeveKey )
+void Inventory_EquipSleeve( int nTeamMask, const char *pszSleeveKey, const char *pszSkintoneKey )
 {
 	Inventory_EnsureLoaded();
 	if ( nTeamMask == INV_TEAMMASK_NONE )
@@ -2591,15 +2662,111 @@ void Inventory_EquipSleeve( int nTeamMask, const char *pszSleeveKey )
 	if ( nTeamMask & INV_TEAMMASK_T )
 		V_strncpy( s_szSleeveLoadout[INV_TEAM_T], szNorm, sizeof( s_szSleeveLoadout[INV_TEAM_T] ) );
 
+	if ( pszSkintoneKey )
+	{
+		char szToneNorm[64];
+		NormalizeSkintoneKey( pszSkintoneKey, szToneNorm, sizeof( szToneNorm ) );
+		if ( nTeamMask & INV_TEAMMASK_CT )
+			V_strncpy( s_szSkintoneLoadout[INV_TEAM_CT], szToneNorm, sizeof( s_szSkintoneLoadout[INV_TEAM_CT] ) );
+		if ( nTeamMask & INV_TEAMMASK_T )
+			V_strncpy( s_szSkintoneLoadout[INV_TEAM_T], szToneNorm, sizeof( s_szSkintoneLoadout[INV_TEAM_T] ) );
+	}
+
 	EInventoryTeam activeTeam = INV_TEAM_T;
 	if ( GetActiveLocalTeam( activeTeam ) )
 	{
 		PushSleeveToConVar( s_szSleeveLoadout[activeTeam] );
+		if ( pszSkintoneKey )
+			PushSkintoneToConVar( s_szSkintoneLoadout[activeTeam] );
 	}
 	else
 	{
 		PushSleeveToConVar( szNorm );
+		if ( pszSkintoneKey )
+		{
+			PushSkintoneToConVar( ( nTeamMask & INV_TEAMMASK_T ) ? s_szSkintoneLoadout[INV_TEAM_T] : s_szSkintoneLoadout[INV_TEAM_CT] );
+		}
 	}
+	++s_nLoadoutRevision;
+	Inventory_SaveLoadout();
+	if ( engine && engine->IsInGame() )
+	{
+		Inventory_PrecacheEquippedAssets();
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Sleeve / Arm Skintones accessors & team loadout
+//-----------------------------------------------------------------------------
+int Inventory_GetSkintoneCount()
+{
+	return ARRAYSIZE( s_Skintones );
+}
+
+const InventorySkintoneDef_t *Inventory_GetSkintoneDef( int iIndex )
+{
+	if ( iIndex < 0 || iIndex >= ARRAYSIZE( s_Skintones ) )
+		return NULL;
+	return &s_Skintones[iIndex];
+}
+
+const InventorySkintoneDef_t *Inventory_FindSkintoneByKey( const char *pszKey )
+{
+	if ( !pszKey || !pszKey[0] || !V_stricmp( pszKey, "-1" ) || !V_stricmp( pszKey, "default" ) || !V_stricmp( pszKey, "faction" ) )
+		return &s_Skintones[0];
+
+	if ( !V_strcmp( pszKey, "7" ) )
+		pszKey = "6";
+
+	for ( int i = 0; i < ARRAYSIZE( s_Skintones ); ++i )
+	{
+		if ( !V_stricmp( pszKey, s_Skintones[i].pszKey ) ||
+			 MatchesNormalizedToken( pszKey, s_Skintones[i].pszDisplayName ) )
+			return &s_Skintones[i];
+	}
+	return &s_Skintones[0];
+}
+
+const char *Inventory_GetEquippedSkintoneKey( EInventoryTeam eTeam )
+{
+	Inventory_EnsureLoaded();
+	return s_szSkintoneLoadout[clamp( (int)eTeam, 0, INV_TEAM_COUNT - 1 )];
+}
+
+int Inventory_GetSkintoneEquippedMask( const char *pszSkintoneKey )
+{
+	Inventory_EnsureLoaded();
+	char szNorm[64];
+	NormalizeSkintoneKey( pszSkintoneKey, szNorm, sizeof( szNorm ) );
+
+	int nMask = INV_TEAMMASK_NONE;
+	if ( !V_stricmp( s_szSkintoneLoadout[INV_TEAM_CT], szNorm ) )
+		nMask |= INV_TEAMMASK_CT;
+	if ( !V_stricmp( s_szSkintoneLoadout[INV_TEAM_T], szNorm ) )
+		nMask |= INV_TEAMMASK_T;
+	return nMask;
+}
+
+void Inventory_EquipSkintone( int nTeamMask, const char *pszSkintoneKey )
+{
+	Inventory_EnsureLoaded();
+	if ( nTeamMask == INV_TEAMMASK_NONE )
+		return;
+
+	char szNorm[64];
+	NormalizeSkintoneKey( pszSkintoneKey, szNorm, sizeof( szNorm ) );
+	if ( nTeamMask & INV_TEAMMASK_CT )
+		V_strncpy( s_szSkintoneLoadout[INV_TEAM_CT], szNorm, sizeof( s_szSkintoneLoadout[INV_TEAM_CT] ) );
+	if ( nTeamMask & INV_TEAMMASK_T )
+		V_strncpy( s_szSkintoneLoadout[INV_TEAM_T], szNorm, sizeof( s_szSkintoneLoadout[INV_TEAM_T] ) );
+
+	EInventoryTeam activeTeam = INV_TEAM_T;
+	if ( GetActiveLocalTeam( activeTeam ) )
+		PushSkintoneToConVar( s_szSkintoneLoadout[activeTeam] );
+	else
+		PushSkintoneToConVar( szNorm );
+
+	++s_nLoadoutRevision;
 	Inventory_SaveLoadout();
 }
 
@@ -3134,3 +3301,162 @@ void Inventory_GetActiveStickersForViewmodel( int nWep, C_BaseViewModel *pVM, C_
 		bOutActive[s] = Inventory_ResolveStickerTexturePath( pszChoice, szTexPath, sizeof( szTexPath ) );
 	}
 }
+
+//-----------------------------------------------------------------------------
+// Loadout Revision & Asset Precaching (prevents first-switch FPS drop / stutter)
+//-----------------------------------------------------------------------------
+unsigned int Inventory_GetLoadoutRevision()
+{
+	return s_nLoadoutRevision;
+}
+
+static void PrecacheTextureIntoList( const char *pszTexPath, CUtlVector<ITexture *> &outList )
+{
+	if ( !pszTexPath || !pszTexPath[0] || !materials )
+		return;
+
+	ITexture *pTex = materials->FindTexture( pszTexPath, TEXTURE_GROUP_MODEL, false );
+	if ( pTex && !IsErrorTexture( pTex ) && !outList.HasElement( pTex ) )
+	{
+		pTex->IncrementReferenceCount();
+		outList.AddToTail( pTex );
+	}
+}
+
+static void PrecacheDynamicModelIfNeeded( const char *pszModelPath )
+{
+	if ( !pszModelPath || !pszModelPath[0] || !modelinfo || !filesystem )
+		return;
+
+	if ( modelinfo->GetModelIndex( pszModelPath ) == -1 && filesystem->FileExists( pszModelPath, "GAME" ) )
+	{
+		modelinfo->RegisterDynamicModel( pszModelPath, true );
+	}
+}
+
+static int PrecacheGloveSkinCallback( const char *pszFamilyKey, char *pszOutStr, int nOutSize )
+{
+	if ( pszOutStr && nOutSize > 0 )
+		pszOutStr[0] = '\0';
+	return 0;
+}
+
+static const char *s_pszPrecacheGloveSkin = "0";
+static const char *s_pszPrecacheGloveFamily = "";
+static int PrecacheEquippedGloveSkinCallback( const char *pszFamilyKey, char *pszOutStr, int nOutSize )
+{
+	if ( pszFamilyKey && !V_stricmp( pszFamilyKey, s_pszPrecacheGloveFamily ) )
+	{
+		if ( pszOutStr && nOutSize > 0 )
+		{
+			V_strncpy( pszOutStr, s_pszPrecacheGloveSkin, nOutSize );
+		}
+		return atoi( s_pszPrecacheGloveSkin );
+	}
+	return PrecacheGloveSkinCallback( pszFamilyKey, pszOutStr, nOutSize );
+}
+
+void Inventory_ReleasePrecachedAssets()
+{
+	FOR_EACH_VEC( s_vecPrecachedTextures, i )
+	{
+		if ( s_vecPrecachedTextures[i] )
+		{
+			s_vecPrecachedTextures[i]->DecrementReferenceCount();
+		}
+	}
+	s_vecPrecachedTextures.RemoveAll();
+}
+
+void Inventory_PrecacheEquippedAssets()
+{
+	Inventory_EnsureLoaded();
+	if ( !materials || !modelinfo || !filesystem )
+		return;
+
+	CUtlVector<ITexture *> newCache;
+	char szTexPath[MAX_PATH];
+	char szMdlPath[MAX_PATH];
+
+	for ( int t = 0; t < INV_TEAM_COUNT; ++t )
+	{
+		// 1. Precache equipped weapon skins, sticker VTFs, and sticker decal MDLs
+		for ( int w = 0; w < INV_SKIN_WEP_COUNT; ++w )
+		{
+			const InventoryWeaponLoadout_t &loadout = s_WeaponLoadouts[w][t];
+			if ( Inventory_ResolveWeaponSkinTexturePath( w, loadout.szSkinKey, szTexPath, sizeof( szTexPath ) ) )
+			{
+				PrecacheTextureIntoList( szTexPath, newCache );
+			}
+			for ( int s = 0; s < INV_MAX_STICKER_SLOTS; ++s )
+			{
+				if ( Inventory_ResolveStickerTexturePath( loadout.szStickerKeys[s], szTexPath, sizeof( szTexPath ) ) )
+				{
+					PrecacheTextureIntoList( szTexPath, newCache );
+					Inventory_GetWeaponStickerModelPath( w, s, szMdlPath, sizeof( szMdlPath ) );
+					PrecacheDynamicModelIfNeeded( szMdlPath );
+				}
+			}
+		}
+
+		// 2. Precache equipped knife model & knife skin VTF
+		const InventoryKnifeDef_t *pKnife = Inventory_FindKnifeByKey( s_szKnifeLoadout[t] );
+		if ( pKnife )
+		{
+			PrecacheDynamicModelIfNeeded( pKnife->pszModelPath );
+			int nKnifeIdx = Inventory_FindKnifeIndexByKey( pKnife->pszKey );
+			if ( Inventory_ResolveWeaponSkinTexturePath( INV_KNIFE_HINT_BASE + nKnifeIdx, s_szKnifeSkinLoadout[t], szTexPath, sizeof( szTexPath ) ) )
+			{
+				PrecacheTextureIntoList( szTexPath, newCache );
+			}
+		}
+
+		// 3. Precache equipped glove model & override texture
+		const InventoryGloveDef_t *pGlove = Inventory_FindGloveById( s_szGloveLoadout[t] );
+		if ( pGlove && V_strcmp( pGlove->pszFamilyKey, "-1" ) != 0 )
+		{
+			s_pszPrecacheGloveFamily = pGlove->pszFamilyKey;
+			s_pszPrecacheGloveSkin = pGlove->pszSkinKey;
+			ArmGloveSelection sel;
+			if ( ResolveViewmodelGloveSelection( pGlove->pszFamilyKey, PrecacheEquippedGloveSkinCallback, sel ) )
+			{
+				PrecacheDynamicModelIfNeeded( sel.pszModelPath );
+				PrecacheTextureIntoList( sel.pszOverrideBaseTexture, newCache );
+			}
+		}
+
+		// 4. Precache equipped sleeve model
+		const InventorySleeveDef_t *pSleeve = Inventory_FindSleeveByKey( s_szSleeveLoadout[t] );
+		if ( pSleeve && pSleeve->pszModelPath && pSleeve->pszModelPath[0] )
+		{
+			PrecacheDynamicModelIfNeeded( pSleeve->pszModelPath );
+		}
+	}
+
+	// Release old refs only AFTER incrementing newCache refs so kept textures stay resident in GPU memory
+	Inventory_ReleasePrecachedAssets();
+	s_vecPrecachedTextures.Swap( newCache );
+}
+
+class CInventoryPrecacheSystem : public CAutoGameSystem
+{
+public:
+	CInventoryPrecacheSystem() : CAutoGameSystem( "CInventoryPrecacheSystem" ) {}
+
+	virtual void LevelInitPostEntity() OVERRIDE
+	{
+		Inventory_PrecacheEquippedAssets();
+	}
+
+	virtual void LevelShutdownPostEntity() OVERRIDE
+	{
+		Inventory_ReleasePrecachedAssets();
+	}
+
+	virtual void Shutdown() OVERRIDE
+	{
+		Inventory_ReleasePrecachedAssets();
+	}
+};
+
+static CInventoryPrecacheSystem g_InventoryPrecacheSystem;

@@ -60,6 +60,22 @@
 	static void RemoveViewmodelStickers( C_BaseViewModel *pVM );
 	static void DrawViewmodelStickers( C_BaseViewModel *pVM, int flags );
 
+	static ITexture *FindAndEnsureDownloadedModelTexture( const char *pszTexturePath )
+	{
+		if ( !pszTexturePath || !pszTexturePath[0] || !materials )
+			return NULL;
+
+		ITexture *pTex = materials->FindTexture( pszTexturePath, TEXTURE_GROUP_MODEL, false );
+		if ( !pTex || IsErrorTexture( pTex ) )
+			return NULL;
+
+		if ( pTex->GetActualWidth() <= 0 )
+		{
+			pTex->Download();
+		}
+		return pTex;
+	}
+
 	static int GetArmGloveSkinConVarValue( const char *pszFamilyKey, char *pszOutStr, int nOutStrSize )
 	{
 		const ConVar *pVar = NULL;
@@ -753,8 +769,8 @@ void C_ViewmodelAttachmentModel::SetOverrideBaseTexture( const char *pszTextureP
 
 	if ( pszTexturePath && pszTexturePath[0] != '\0' )
 	{
-		ITexture *pTex = materials->FindTexture( pszTexturePath, TEXTURE_GROUP_MODEL, false );
-		if ( pTex && !IsErrorTexture( pTex ) )
+		ITexture *pTex = FindAndEnsureDownloadedModelTexture( pszTexturePath );
+		if ( pTex )
 		{
 			pTex->IncrementReferenceCount();
 			m_pOverrideBaseTexture = pTex;
@@ -916,8 +932,8 @@ public:
 		char szOverridePath[MAX_PATH];
 		if ( pC_BaseEntity && Inventory_ResolvePreviewGloveOverrideTexture( pC_BaseEntity, szOverridePath, sizeof( szOverridePath ) ) )
 		{
-			ITexture *pPreviewTex = materials->FindTexture( szOverridePath, TEXTURE_GROUP_MODEL, false );
-			if ( pPreviewTex && !pPreviewTex->IsError() )
+			ITexture *pPreviewTex = FindAndEnsureDownloadedModelTexture( szOverridePath );
+			if ( pPreviewTex )
 			{
 				pTargetTexture = pPreviewTex;
 			}
@@ -1364,8 +1380,8 @@ protected:
 		char szTexturePath[MAX_PATH];
 		if ( ResolveChoiceToTexturePath( pszChoice, szTexturePath, sizeof( szTexturePath ) ) )
 		{
-			ITexture *pTex = materials->FindTexture( szTexturePath, TEXTURE_GROUP_MODEL, false );
-			if ( pTex && !IsErrorTexture( pTex ) )
+			ITexture *pTex = FindAndEnsureDownloadedModelTexture( szTexturePath );
+			if ( pTex )
 			{
 				pTex->IncrementReferenceCount();
 				m_pOverrideTexture = pTex;

@@ -12,8 +12,12 @@
 #include "c_baseviewmodel.h"
 #include "filesystem.h"
 #include "igamesystem.h"
+#include "datacache/imdlcache.h"
 #include "materialsystem/imaterialsystem.h"
+#include "materialsystem/imaterial.h"
+#include "materialsystem/imaterialvar.h"
 #include "materialsystem/itexture.h"
+#include "weapon_parse.h"
 #include <KeyValues.h>
 #include <ctype.h>
 
@@ -1653,6 +1657,9 @@ static bool s_bSyncingConVars = false;
 static int s_nLastSyncedTeamNumber = -1;
 static unsigned int s_nLoadoutRevision = 1;
 static CUtlVector<ITexture *> s_vecPrecachedTextures;
+static CUtlVector<IMaterial *> s_vecPrecachedMaterials;
+static CUtlVector<int> s_vecPrecachedDynamicModels;
+static bool s_bPrecacheActive = false;
 
 static int s_nPreviewSkinToken = 0;
 static int s_nPreviewStickerTokens[INV_MAX_STICKER_SLOTS] = { 0, 1, 2, 3 };
@@ -3310,28 +3317,157 @@ unsigned int Inventory_GetLoadoutRevision()
 	return s_nLoadoutRevision;
 }
 
+static void RetainAndDownloadTexture( ITexture *pTex, CUtlVector<ITexture *> &outList )
+{
+	const uintp uTex = (uintp)pTex;
+	if ( !pTex || uTex == (uintp)-1 || uTex == (uintp)0xffffffff || IsErrorTexture( pTex ) || outList.HasElement( pTex ) )
+		return;
+
+	if ( pTex->GetActualWidth() <= 0 )
+	{
+		pTex->Download();
+	}
+	pTex->IncrementReferenceCount();
+	outList.AddToTail( pTex );
+}
+
 static void PrecacheTextureIntoList( const char *pszTexPath, CUtlVector<ITexture *> &outList )
 {
 	if ( !pszTexPath || !pszTexPath[0] || !materials )
 		return;
 
 	ITexture *pTex = materials->FindTexture( pszTexPath, TEXTURE_GROUP_MODEL, false );
-	if ( pTex && !IsErrorTexture( pTex ) && !outList.HasElement( pTex ) )
+	RetainAndDownloadTexture( pTex, outList );
+}
+
+static void WarmLoadedModelAssets( const model_t *pModel, CUtlVector<IMaterial *> &outMats, CUtlVector<ITexture *> &outTexs )
+{
+	if ( !pModel || !modelinfo || !materials )
+		return;
+
+	if ( mdlcache )
 	{
-		pTex->IncrementReferenceCount();
-		outList.AddToTail( pTex );
+		MDLHandle_t hMdl = modelinfo->GetCacheHandle( pModel );
+		if ( hMdl != MDLHANDLE_INVALID )
+		{
+			mdlcache->TouchAllData( hMdl );
+		}
+	}
+
+	const int nMatCount = modelinfo->GetModelMaterialCount( pModel );
+	if ( nMatCount <= 0 )
+		return;
+
+	CUtlVector<IMaterial *> mats;
+	mats.SetCount( nMatCount );
+	modelinfo->GetModelMaterials( pModel, nMatCount, mats.Base() );
+
+	for ( int i = 0; i < nMatCount; ++i )
+	{
+		IMaterial *pMat = mats[i];
+		if ( !pMat || IsErrorMaterial( pMat ) )
+			continue;
+
+		if ( !outMats.HasElement( pMat ) )
+		{
+			pMat->IncrementReferenceCount();
+			outMats.AddToTail( pMat );
+		}
+
+		// Force VMT parse, shader compilation/caching, proxy Init, and state snapshot setup
+		pMat->GetNumPasses();
+
+		const int nParams = pMat->ShaderParamCount();
+		IMaterialVar **ppVars = pMat->GetShaderParams();
+		for ( int p = 0; p < nParams; ++p )
+		{
+			IMaterialVar *pVar = ppVars[p];
+			if ( pVar && pVar->IsTexture() )
+			{
+				RetainAndDownloadTexture( pVar->GetTextureValue(), outTexs );
+			}
+		}
 	}
 }
 
-static void PrecacheDynamicModelIfNeeded( const char *pszModelPath )
+class CInventoryModelLoadCallback : public IModelLoadCallback
+{
+public:
+	virtual void OnModelLoadComplete( const model_t *pModel ) OVERRIDE
+	{
+		if ( !s_bPrecacheActive || !pModel )
+			return;
+
+		WarmLoadedModelAssets( pModel, s_vecPrecachedMaterials, s_vecPrecachedTextures );
+	}
+};
+
+static CInventoryModelLoadCallback *s_pModelLoadCallback = NULL;
+
+static void PrecacheModelAssetsIntoLists( const char *pszModelPath, CUtlVector<int> &outDynModels, CUtlVector<IMaterial *> &outMats, CUtlVector<ITexture *> &outTexs, CUtlVector<int> &outPendingCallbacks )
 {
 	if ( !pszModelPath || !pszModelPath[0] || !modelinfo || !filesystem )
 		return;
 
-	if ( modelinfo->GetModelIndex( pszModelPath ) == -1 && filesystem->FileExists( pszModelPath, "GAME" ) )
+	if ( !V_stristr( pszModelPath, ".mdl" ) )
+		return;
+
+	int nIdx = modelinfo->GetModelIndex( pszModelPath );
+	if ( nIdx == -1 )
 	{
-		modelinfo->RegisterDynamicModel( pszModelPath, true );
+		if ( !filesystem->FileExists( pszModelPath, "GAME" ) )
+			return;
+
+		nIdx = modelinfo->RegisterDynamicModel( pszModelPath, true );
 	}
+	if ( nIdx == -1 )
+		return;
+
+	if ( IsDynamicModelIndex( nIdx ) )
+	{
+		if ( outDynModels.HasElement( nIdx ) )
+			return;
+
+		// AddRef starts async dynamic loading and keeps the model resident across weapon switches
+		modelinfo->AddRefDynamicModel( nIdx );
+		outDynModels.AddToTail( nIdx );
+
+		if ( modelinfo->IsDynamicModelLoading( nIdx ) )
+		{
+			if ( !outPendingCallbacks.HasElement( nIdx ) )
+			{
+				outPendingCallbacks.AddToTail( nIdx );
+			}
+			return;
+		}
+	}
+
+	WarmLoadedModelAssets( modelinfo->GetModel( nIdx ), outMats, outTexs );
+}
+
+static void PrecacheWeaponModelsForSlot( int nWep, CUtlVector<int> &outDynModels, CUtlVector<IMaterial *> &outMats, CUtlVector<ITexture *> &outTexs, CUtlVector<int> &outPendingCallbacks )
+{
+	if ( nWep < 0 || nWep >= INV_SKIN_WEP_COUNT )
+		return;
+
+	const char *pszAlias = WeaponIDToAlias( (CSWeaponID)s_CustomWeapons[nWep].eWeaponID );
+	if ( !pszAlias || !pszAlias[0] )
+		return;
+
+	const char *pszTranslated = GetTranslatedWeaponAlias( pszAlias );
+	char szWpnName[128];
+	Q_snprintf( szWpnName, sizeof( szWpnName ), "weapon_%s", pszTranslated ? pszTranslated : pszAlias );
+
+	WEAPON_FILE_INFO_HANDLE hWpnInfo = LookupWeaponInfoSlot( szWpnName );
+	if ( hWpnInfo == GetInvalidWeaponInfoHandle() )
+		return;
+
+	FileWeaponInfo_t *pWpnInfo = GetFileWeaponInfoFromHandle( hWpnInfo );
+	if ( !pWpnInfo )
+		return;
+
+	PrecacheModelAssetsIntoLists( pWpnInfo->szViewModel, outDynModels, outMats, outTexs, outPendingCallbacks );
+	PrecacheModelAssetsIntoLists( pWpnInfo->szWorldModel, outDynModels, outMats, outTexs, outPendingCallbacks );
 }
 
 static int PrecacheGloveSkinCallback( const char *pszFamilyKey, char *pszOutStr, int nOutSize )
@@ -3358,6 +3494,13 @@ static int PrecacheEquippedGloveSkinCallback( const char *pszFamilyKey, char *ps
 
 void Inventory_ReleasePrecachedAssets()
 {
+	s_bPrecacheActive = false;
+
+	if ( s_pModelLoadCallback && modelinfo )
+	{
+		modelinfo->UnregisterModelLoadCallback( -1, s_pModelLoadCallback );
+	}
+
 	FOR_EACH_VEC( s_vecPrecachedTextures, i )
 	{
 		if ( s_vecPrecachedTextures[i] )
@@ -3366,6 +3509,24 @@ void Inventory_ReleasePrecachedAssets()
 		}
 	}
 	s_vecPrecachedTextures.RemoveAll();
+
+	FOR_EACH_VEC( s_vecPrecachedMaterials, i )
+	{
+		if ( s_vecPrecachedMaterials[i] )
+		{
+			s_vecPrecachedMaterials[i]->DecrementReferenceCount();
+		}
+	}
+	s_vecPrecachedMaterials.RemoveAll();
+
+	if ( modelinfo )
+	{
+		FOR_EACH_VEC( s_vecPrecachedDynamicModels, i )
+		{
+			modelinfo->ReleaseDynamicModel( s_vecPrecachedDynamicModels[i] );
+		}
+	}
+	s_vecPrecachedDynamicModels.RemoveAll();
 }
 
 void Inventory_PrecacheEquippedAssets()
@@ -3374,44 +3535,38 @@ void Inventory_PrecacheEquippedAssets()
 	if ( !materials || !modelinfo || !filesystem )
 		return;
 
-	CUtlVector<ITexture *> newCache;
+	CUtlVector<ITexture *> newTextures;
+	CUtlVector<IMaterial *> newMaterials;
+	CUtlVector<int> newDynModels;
+	CUtlVector<int> pendingCallbacks;
 	char szTexPath[MAX_PATH];
 	char szMdlPath[MAX_PATH];
 
-	for ( int t = 0; t < INV_TEAM_COUNT; ++t )
+	// Queue the local player's active team first so in-progress equips finish before the opposite team
+	int nFirstTeam = INV_TEAM_CT;
+	C_CSPlayer *pLocalPlayer = C_CSPlayer::GetLocalCSPlayer();
+	if ( pLocalPlayer && pLocalPlayer->GetTeamNumber() == TEAM_TERRORIST )
 	{
-		// 1. Precache equipped weapon skins, sticker VTFs, and sticker decal MDLs
-		for ( int w = 0; w < INV_SKIN_WEP_COUNT; ++w )
-		{
-			const InventoryWeaponLoadout_t &loadout = s_WeaponLoadouts[w][t];
-			if ( Inventory_ResolveWeaponSkinTexturePath( w, loadout.szSkinKey, szTexPath, sizeof( szTexPath ) ) )
-			{
-				PrecacheTextureIntoList( szTexPath, newCache );
-			}
-			for ( int s = 0; s < INV_MAX_STICKER_SLOTS; ++s )
-			{
-				if ( Inventory_ResolveStickerTexturePath( loadout.szStickerKeys[s], szTexPath, sizeof( szTexPath ) ) )
-				{
-					PrecacheTextureIntoList( szTexPath, newCache );
-					Inventory_GetWeaponStickerModelPath( w, s, szMdlPath, sizeof( szMdlPath ) );
-					PrecacheDynamicModelIfNeeded( szMdlPath );
-				}
-			}
-		}
+		nFirstTeam = INV_TEAM_T;
+	}
 
-		// 2. Precache equipped knife model & knife skin VTF
+	for ( int ti = 0; ti < INV_TEAM_COUNT; ++ti )
+	{
+		const int t = ( nFirstTeam + ti ) % INV_TEAM_COUNT;
+
+		// 1. Precache equipped knife model & knife skin VTF
 		const InventoryKnifeDef_t *pKnife = Inventory_FindKnifeByKey( s_szKnifeLoadout[t] );
 		if ( pKnife )
 		{
-			PrecacheDynamicModelIfNeeded( pKnife->pszModelPath );
+			PrecacheModelAssetsIntoLists( pKnife->pszModelPath, newDynModels, newMaterials, newTextures, pendingCallbacks );
 			int nKnifeIdx = Inventory_FindKnifeIndexByKey( pKnife->pszKey );
 			if ( Inventory_ResolveWeaponSkinTexturePath( INV_KNIFE_HINT_BASE + nKnifeIdx, s_szKnifeSkinLoadout[t], szTexPath, sizeof( szTexPath ) ) )
 			{
-				PrecacheTextureIntoList( szTexPath, newCache );
+				PrecacheTextureIntoList( szTexPath, newTextures );
 			}
 		}
 
-		// 3. Precache equipped glove model & override texture
+		// 2. Precache equipped glove model & override texture
 		const InventoryGloveDef_t *pGlove = Inventory_FindGloveById( s_szGloveLoadout[t] );
 		if ( pGlove && V_strcmp( pGlove->pszFamilyKey, "-1" ) != 0 )
 		{
@@ -3420,22 +3575,65 @@ void Inventory_PrecacheEquippedAssets()
 			ArmGloveSelection sel;
 			if ( ResolveViewmodelGloveSelection( pGlove->pszFamilyKey, PrecacheEquippedGloveSkinCallback, sel ) )
 			{
-				PrecacheDynamicModelIfNeeded( sel.pszModelPath );
-				PrecacheTextureIntoList( sel.pszOverrideBaseTexture, newCache );
+				PrecacheModelAssetsIntoLists( sel.pszModelPath, newDynModels, newMaterials, newTextures, pendingCallbacks );
+				PrecacheTextureIntoList( sel.pszOverrideBaseTexture, newTextures );
 			}
 		}
 
-		// 4. Precache equipped sleeve model
+		// 3. Precache equipped sleeve model
 		const InventorySleeveDef_t *pSleeve = Inventory_FindSleeveByKey( s_szSleeveLoadout[t] );
 		if ( pSleeve && pSleeve->pszModelPath && pSleeve->pszModelPath[0] )
 		{
-			PrecacheDynamicModelIfNeeded( pSleeve->pszModelPath );
+			PrecacheModelAssetsIntoLists( pSleeve->pszModelPath, newDynModels, newMaterials, newTextures, pendingCallbacks );
+		}
+
+		// 4. Precache customized weapons (skins, sticker VTFs/MDLs, and weapon view/world models)
+		for ( int w = 0; w < INV_SKIN_WEP_COUNT; ++w )
+		{
+			const InventoryWeaponLoadout_t &loadout = s_WeaponLoadouts[w][t];
+			const bool bHasSkin = Inventory_ResolveWeaponSkinTexturePath( w, loadout.szSkinKey, szTexPath, sizeof( szTexPath ) );
+			if ( bHasSkin )
+			{
+				PrecacheTextureIntoList( szTexPath, newTextures );
+			}
+
+			bool bHasSticker = false;
+			for ( int s = 0; s < INV_MAX_STICKER_SLOTS; ++s )
+			{
+				if ( Inventory_ResolveStickerTexturePath( loadout.szStickerKeys[s], szTexPath, sizeof( szTexPath ) ) )
+				{
+					bHasSticker = true;
+					PrecacheTextureIntoList( szTexPath, newTextures );
+					Inventory_GetWeaponStickerModelPath( w, s, szMdlPath, sizeof( szMdlPath ) );
+					PrecacheModelAssetsIntoLists( szMdlPath, newDynModels, newMaterials, newTextures, pendingCallbacks );
+				}
+			}
+
+			if ( bHasSkin || bHasSticker )
+			{
+				PrecacheWeaponModelsForSlot( w, newDynModels, newMaterials, newTextures, pendingCallbacks );
+			}
 		}
 	}
 
-	// Release old refs only AFTER incrementing newCache refs so kept textures stay resident in GPU memory
+	// Release old refs only AFTER acquiring new refs so kept textures, materials, and models stay resident
 	Inventory_ReleasePrecachedAssets();
-	s_vecPrecachedTextures.Swap( newCache );
+	s_vecPrecachedTextures.Swap( newTextures );
+	s_vecPrecachedMaterials.Swap( newMaterials );
+	s_vecPrecachedDynamicModels.Swap( newDynModels );
+	s_bPrecacheActive = true;
+
+	if ( pendingCallbacks.Count() > 0 )
+	{
+		if ( !s_pModelLoadCallback )
+		{
+			s_pModelLoadCallback = new CInventoryModelLoadCallback;
+		}
+		FOR_EACH_VEC( pendingCallbacks, i )
+		{
+			modelinfo->RegisterModelLoadCallback( pendingCallbacks[i], s_pModelLoadCallback, true );
+		}
+	}
 }
 
 class CInventoryPrecacheSystem : public CAutoGameSystem
@@ -3456,6 +3654,8 @@ public:
 	virtual void Shutdown() OVERRIDE
 	{
 		Inventory_ReleasePrecachedAssets();
+		delete s_pModelLoadCallback;
+		s_pModelLoadCallback = NULL;
 	}
 };
 

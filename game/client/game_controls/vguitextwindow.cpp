@@ -85,7 +85,7 @@ CTextWindow::CTextWindow(IViewPort *pViewPort) : Frame(NULL, PANEL_INFO	)
 
 //	SetTitle("", true);
 
-	m_szTitle[0] = '\0';
+	V_strcpy_safe( m_szTitle, "Error loading info message." );
 	m_szMessage[0] = '\0';
 	m_szMessageFallback[0] = '\0';
 	m_nExitCommand = TEXTWINDOW_CMD_NONE;
@@ -120,7 +120,8 @@ void CTextWindow::ApplySchemeSettings( IScheme *pScheme )
 
 	LoadControlSettings("Resource/UI/TextWindow.res");
 
-	Reset();
+	// Re-apply already-received SetData() state after .res reload without wiping it via Reset()
+	Update();
 }
 
 //-----------------------------------------------------------------------------

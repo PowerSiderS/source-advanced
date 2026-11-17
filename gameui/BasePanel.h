@@ -228,6 +228,7 @@ public:
 	void OnOpenBenchmarkDialog();
 	void OnOpenOptionsDialog();
 	void OnOpenModOptionsDialog();
+	void OnOpenInventoryDialog();
 	void OnOpenOptionsDialog_Xbox();
 	void OnOpenLoadCommentaryDialog();
 	void OpenLoadSingleplayerCommentaryDialog();

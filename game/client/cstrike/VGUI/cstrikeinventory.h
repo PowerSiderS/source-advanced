@@ -16,5 +16,6 @@
 void CSInventory_Init();
 void CSInventory_Shutdown();
 void CSInventory_Open( bool bToggle = false );
+void CSInventory_Close();
 
 #endif // CSTRIKEINVENTORY_H

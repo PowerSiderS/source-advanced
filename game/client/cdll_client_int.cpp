@@ -73,6 +73,9 @@
 #include "c_vguiscreen.h"
 #include "imessagechars.h"
 #include "game/client/IGameClientExports.h"
+#ifdef CSTRIKE_DLL
+#include "cstrikeinventory.h"
+#endif
 #include "client_factorylist.h"
 #include "ragdoll_shared.h"
 #include "rendertexture.h"
@@ -378,6 +381,9 @@ public:
 
 	void OnGameUIHidden( void )
 	{
+#ifdef CSTRIKE_DLL
+		CSInventory_Close();
+#endif
 		IGameEvent *event = gameeventmanager->CreateEvent( "gameui_hidden" );
 		if ( event )
 		{
@@ -431,6 +437,20 @@ public:
 	const char *GetHolidayString()
 	{
 		return UTIL_GetActiveHolidayString();
+	}
+
+	void OpenInventoryPanel()
+	{
+#ifdef CSTRIKE_DLL
+		CSInventory_Open( false );
+#endif
+	}
+
+	void CloseInventoryPanel()
+	{
+#ifdef CSTRIKE_DLL
+		CSInventory_Close();
+#endif
 	}
 };
 

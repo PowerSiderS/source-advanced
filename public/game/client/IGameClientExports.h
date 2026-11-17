@@ -45,6 +45,9 @@ public:
     //=============================================================================
 
 	virtual const char *GetHolidayString() = 0;
+
+	virtual void OpenInventoryPanel() = 0;
+	virtual void CloseInventoryPanel() = 0;
 };
 
 #define GAMECLIENTEXPORTS_INTERFACE_VERSION "GameClientExports001"

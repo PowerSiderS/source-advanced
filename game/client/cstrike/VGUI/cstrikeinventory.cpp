@@ -1317,7 +1317,10 @@ void CCSInventoryPanel::OpenInventory()
 {
 	m_bShouldHideGameUIOnClose = ( !enginevgui->IsGameUIVisible() && engine->IsInGame() && !engine->IsLevelMainMenuBackground() );
 
-	engine->ClientCmd_Unrestricted( "gameui_activate" );
+	if ( !enginevgui->IsGameUIVisible() )
+	{
+		engine->ClientCmd_Unrestricted( "gameui_activate" );
+	}
 	engine->ClientCmd_Unrestricted( "hideconsole" );
 
 	LoadEquippedStateForActiveTeam();
@@ -2984,12 +2987,10 @@ void CSInventory_Open( bool bToggle )
 	}
 }
 
-CON_COMMAND_F( open_inventory, "Open the CS:GO weapons inventory menu.", FCVAR_CLIENTDLL | FCVAR_CLIENTCMD_CAN_EXECUTE )
+void CSInventory_Close()
 {
-	CSInventory_Open( false );
-}
-
-CON_COMMAND_F( inventory, "Open or toggle the CS:GO weapons inventory menu.", FCVAR_CLIENTDLL | FCVAR_CLIENTCMD_CAN_EXECUTE )
-{
-	CSInventory_Open( true );
+	if ( g_hCSInventoryPanel.Get() && g_hCSInventoryPanel->IsVisible() )
+	{
+		g_hCSInventoryPanel->CloseInventory();
+	}
 }

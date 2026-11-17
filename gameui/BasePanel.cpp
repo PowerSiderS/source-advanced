@@ -994,6 +994,7 @@ static const char *g_rgValidCommands[] =
 	"OpenCustomMapsDialog",
 	"OpenOptionsDialog",
 	"OpenModOptionsDialog",
+	"OpenInventoryDialog",
 	"OpenBenchmarkDialog",
 	"OpenServerBrowser",
 	"OpenFriendsDialog",
@@ -2095,6 +2096,10 @@ void CBasePanel::RunMenuCommand(const char *command)
 	{
 		OnOpenModOptionsDialog();
 	}
+	else if ( !Q_stricmp( command, "OpenInventoryDialog" ) )
+	{
+		OnOpenInventoryDialog();
+	}
 	else if ( !Q_stricmp( command, "OpenControllerDialog" ) )
 	{
 		if ( GameUI().IsConsoleUI() )
@@ -2210,6 +2215,7 @@ void CBasePanel::RunMenuCommand(const char *command)
 
             if ( GameClientExports() )
             {
+                GameClientExports()->CloseInventoryPanel();
                 GameClientExports()->ShutdownAchievementPanel();
             }
 
@@ -3245,6 +3251,17 @@ void CBasePanel::OnOpenModOptionsDialog()
 	}
 
 	m_hModOptionsDialog->Activate();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Opening inventory
+//-----------------------------------------------------------------------------
+void CBasePanel::OnOpenInventoryDialog()
+{
+	if ( GameClientExports() )
+	{
+		GameClientExports()->OpenInventoryPanel();
+	}
 }
 
 //-----------------------------------------------------------------------------

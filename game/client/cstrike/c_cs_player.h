@@ -402,11 +402,6 @@ private:
     // HPE_END
     //=============================================================================
 
-	bool m_bWasWarmupPeriod;
-	bool m_bLastWarmupPaused;
-	int m_nLastWarmupSec;
-	float m_flNextWarmupCenterPrintTime;
-
 	C_CSPlayer( const C_CSPlayer & );
 };
 

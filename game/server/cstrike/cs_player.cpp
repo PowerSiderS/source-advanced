@@ -3701,7 +3701,23 @@ BuyResult_e CCSPlayer::HandleCommand_Buy_Internal( const char* wpnName )
 			{
 				if ( m_lifeState != LIFE_DEAD )
 				{
-					if ( pWeaponInfo->iSlot == WEAPON_SLOT_PISTOL )
+					if ( CSGameRules() && CSGameRules()->IsWarmupPeriod() )
+					{
+						if ( pWeaponInfo->iSlot == WEAPON_SLOT_PISTOL || pWeaponInfo->iSlot == WEAPON_SLOT_RIFLE )
+						{
+							CBaseCombatWeapon *pOldWeapon = Weapon_GetSlot( pWeaponInfo->iSlot );
+							if ( pOldWeapon )
+							{
+								RemovePlayerItem( pOldWeapon );
+								UTIL_Remove( pOldWeapon );
+								if ( pWeaponInfo->iSlot == WEAPON_SLOT_PISTOL )
+								{
+									m_bUsingDefaultPistol = false;
+								}
+							}
+						}
+					}
+					else if ( pWeaponInfo->iSlot == WEAPON_SLOT_PISTOL )
 					{
 						DropPistol();
 					}

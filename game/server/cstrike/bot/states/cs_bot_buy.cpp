@@ -143,7 +143,7 @@ void BuyState::OnEnter( CCSBot *me )
 		}
 	}
 
-	if (TheCSBots()->AllowGrenades())
+	if ( TheCSBots()->AllowGrenades() && ( !CSGameRules() || !CSGameRules()->IsWarmupPeriod() ) )
 	{
 		m_buyGrenade = (RandomFloat( 0.0f, 100.0f ) < 33.3f) ? true : false;
 	}

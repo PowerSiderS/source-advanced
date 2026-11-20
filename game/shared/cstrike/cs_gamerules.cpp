@@ -3297,22 +3297,28 @@ ConVar cl_autohelp(
 		
 		if ( IsWarmupPeriod() )
 		{
-			if ( ( UTIL_HumansInGame( true ) == 0 || IsWarmupPeriodPaused() ) && ( GetWarmupPeriodEndTime() - 6 >= gpGlobals->curtime ) ) // Wait while paused or before any human joins a team.
+			int nHumansInGame = UTIL_HumansInGame( true );
+
+			if ( ( nHumansInGame == 0 || IsWarmupPeriodPaused() ) && ( GetWarmupPeriodEndTime() - 6 >= gpGlobals->curtime ) ) // Wait while paused or before any human joins a team.
 			{
 				// push out the timers indefinitely.
 				m_fWarmupPeriodStart += gpGlobals->curtime - m_flLastThinkTime;
-				m_fWarmupNextChatNoticeTime += gpGlobals->curtime - m_flLastThinkTime;
+				if ( m_fWarmupNextChatNoticeTime > 0.0f )
+				{
+					m_fWarmupNextChatNoticeTime += gpGlobals->curtime - m_flLastThinkTime;
+				}
 			}
 
-			if ( m_fWarmupNextChatNoticeTime < gpGlobals->curtime )
+			if ( nHumansInGame > 0 && m_fWarmupNextChatNoticeTime >= 0.0f && m_fWarmupNextChatNoticeTime < gpGlobals->curtime )
 			{
-				m_fWarmupNextChatNoticeTime = gpGlobals->curtime + 10;
+				// Broadcast once per warmup instead of spamming HUD chat every 10s
+				m_fWarmupNextChatNoticeTime = -1.0f;
 
 				CBroadcastRecipientFilter filter;
 				UTIL_ClientPrintFilter( filter, HUD_PRINTTALK, "#Cstrike_TitlesTXT_Match_Will_Start_Chat" );
 			}
 
-			if ( ( UTIL_HumansInGame( true ) > 0 && ( GetWarmupPeriodEndTime() - 5 < gpGlobals->curtime ) ) || !mp_do_warmup_period.GetBool() )
+			if ( ( nHumansInGame > 0 && ( GetWarmupPeriodEndTime() - 5 < gpGlobals->curtime ) ) || !mp_do_warmup_period.GetBool() )
 			{
 				if ( mp_warmup_pausetimer.GetBool() )
 				{
@@ -3332,7 +3338,7 @@ ConVar cl_autohelp(
 						{
 							CReliableBroadcastRecipientFilter filter;
 							UTIL_ClientPrintFilter( filter, HUD_PRINTTALK, "#Cstrike_TitlesTXT_Warmup_Has_Ended" );
-							m_fWarmupNextChatNoticeTime = gpGlobals->curtime + 10;
+							m_fWarmupNextChatNoticeTime = -1.0f;
 						}
 					}
 
@@ -4659,6 +4665,7 @@ ConVar cl_autohelp(
 		if ( iReason == Game_Commencing && mp_do_warmup_period.GetBool() )
 		{
 			m_bWarmupPeriod = true;
+			m_fWarmupNextChatNoticeTime = 0.0f;
 		}
 	}
 
@@ -5417,6 +5424,7 @@ void CCSGameRules::StartWarmup( void )
 	m_bCompleteReset = true;
 	m_fWarmupPeriodEnd = 0.0f;
 	m_fWarmupPeriodStart = gpGlobals->curtime;
+	m_fWarmupNextChatNoticeTime = 0.0f;
 
 	RestartRound();
 }

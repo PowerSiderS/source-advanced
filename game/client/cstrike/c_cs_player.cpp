@@ -78,6 +78,7 @@ ConVar cl_crosshair_sniper_width( "cl_crosshair_sniper_width", "1", FCVAR_CLIENT
 ConVar cl_ragdoll_physics_enable( "cl_ragdoll_physics_enable", "1", 0, "Enable/disable ragdoll physics." );
 ConVar cl_ragdoll_gravity( "cl_ragdoll_gravity", "0", 0, "0 = normal gravity on ragdolls, 1 = zero gravity ragdolls." );
 ConVar cl_minmodels( "cl_minmodels", "0", 0, "Uses one player model for each team." );
+ConVar cl_respawn_immunity_alpha( "cl_respawn_immunity_alpha", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Render spawn-immune players semi-transparent (can reduce FPS on mobile GPUs)." );
 ConVar cl_min_ct( "cl_min_ct", "1", 0, "Controls which CT model is used when cl_minmodels is set.", true, 1, true, 4 );
 ConVar cl_min_t( "cl_min_t", "1", 0, "Controls which Terrorist model is used when cl_minmodels is set.", true, 1, true, 4 );
 const float CycleLatchTolerance = 0.15;	// amount we can diverge from the server's cycle before we're corrected
@@ -1329,16 +1330,24 @@ void C_CSPlayer::ClientThink()
 		m_fNextThinkPushAway =  gpGlobals->curtime + PUSHAWAY_THINK_INTERVAL;
 	}
 
-	static ConVarRef mp_respawn_immunitytime( "mp_respawn_immunitytime" );
-	float flImmuneTime = mp_respawn_immunitytime.GetFloat();
-	bool bApplyTransparency = ( flImmuneTime > 0 || ( CSGameRules() && CSGameRules()->IsWarmupPeriod() ) )
-		&& ( !IsLocalPlayer() || C_BasePlayer::ShouldDrawLocalPlayer() );
-	if ( bApplyTransparency && m_bImmunity )
+	if ( cl_respawn_immunity_alpha.GetBool() )
 	{
-		if ( GetRenderMode() != kRenderTransAlpha || GetRenderColor().a != 128 )
+		static ConVarRef mp_respawn_immunitytime( "mp_respawn_immunitytime" );
+		float flImmuneTime = mp_respawn_immunitytime.GetFloat();
+		bool bApplyTransparency = ( flImmuneTime > 0 || ( CSGameRules() && CSGameRules()->IsWarmupPeriod() ) )
+			&& ( !IsLocalPlayer() || C_BasePlayer::ShouldDrawLocalPlayer() );
+		if ( bApplyTransparency && m_bImmunity )
 		{
-			SetRenderMode( kRenderTransAlpha );
-			SetRenderColorA( 128 );
+			if ( GetRenderMode() != kRenderTransAlpha || GetRenderColor().a != 128 )
+			{
+				SetRenderMode( kRenderTransAlpha );
+				SetRenderColorA( 128 );
+			}
+		}
+		else if ( GetRenderMode() != kRenderNormal || GetRenderColor().a != 255 )
+		{
+			SetRenderMode( kRenderNormal, true );
+			SetRenderColorA( 255 );
 		}
 	}
 	else if ( GetRenderMode() != kRenderNormal || GetRenderColor().a != 255 )

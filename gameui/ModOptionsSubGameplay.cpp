@@ -92,6 +92,9 @@ CModOptionsSubGameplay::CModOptionsSubGameplay( vgui::Panel *parent )
 	m_pUseNewHeadbob = new CCvarToggleCheckButton(
 		this, "UseNewHeadbobCheckBox", "#GameUI_Main_CSGOBobbing",
 		"cl_use_new_headbob" );
+	m_pCloseBuyMenuAfterPurchase = new CCvarToggleCheckButton(
+		this, "CloseBuyMenuAfterPurchaseCheckBox", "#GameUI_Main_CloseBuyMenuAfterPurchase",
+		"cl_close_buymenu_after_purchase" );
 	m_pColoredHud = new CCvarToggleCheckButton(
 		this, "ColoredHudCheckBox", "#GameUI_Main_ColoredHud",
 		"cl_hud_color_enable" );
@@ -109,6 +112,7 @@ CModOptionsSubGameplay::CModOptionsSubGameplay( vgui::Panel *parent )
 	m_pDisableTouchOnBuyMenu->AddActionSignalTarget( this );
 	m_pDrawTracers->AddActionSignalTarget( this );
 	m_pUseNewHeadbob->AddActionSignalTarget( this );
+	m_pCloseBuyMenuAfterPurchase->AddActionSignalTarget( this );
 	m_pColoredHud->AddActionSignalTarget( this );
 
 	LoadControlSettings( "Resource/ModOptionsSubGameplay.res" );
@@ -210,6 +214,7 @@ void CModOptionsSubGameplay::OnResetData()
 #endif
 	m_pDrawTracers->Reset();
 	m_pUseNewHeadbob->Reset();
+	m_pCloseBuyMenuAfterPurchase->Reset();
 	m_pColoredHud->Reset();
 
 	ConVarRef cl_hud_color( "cl_hud_color" );
@@ -244,6 +249,7 @@ void CModOptionsSubGameplay::OnApplyChanges()
 #endif
 	m_pDrawTracers->ApplyChanges();
 	m_pUseNewHeadbob->ApplyChanges();
+	m_pCloseBuyMenuAfterPurchase->ApplyChanges();
 	m_pColoredHud->ApplyChanges();
 
 	ApplyHudColorConVar( m_HudColor );

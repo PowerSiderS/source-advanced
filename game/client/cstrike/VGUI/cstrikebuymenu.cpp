@@ -24,6 +24,7 @@
 
 extern ConVar touch_enable;
 extern ConVar touch_disabled_on_buymenu;
+ConVar cl_close_buymenu_after_purchase( "cl_close_buymenu_after_purchase", "1", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Close the buy menu automatically after purchasing an item." );
 static CCSBaseBuyMenu *s_pTouchDisabledBuyMenu = NULL;
 
 using namespace vgui;
@@ -699,10 +700,107 @@ static bool IsWeaponInvalid( CSWeaponID weaponID )
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
+void CCSBuySubMenu::SetVisible( bool state )
+{
+	if ( state )
+	{
+		m_iLastAccount = -1;
+		m_bWaitingEquipMoneyCheck = false;
+	}
+	BaseClass::SetVisible( state );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
 void CCSBuySubMenu::OnThink()
 {
 	UpdateVestHelmPrice();
+
+	C_CSPlayer *pPlayer = C_CSPlayer::GetLocalCSPlayer();
+	if ( pPlayer && IsVisible() )
+	{
+		int nAccount = pPlayer->GetAccount();
+		if ( m_iLastAccount != nAccount )
+		{
+			m_iLastAccount = nAccount;
+			RefreshAllButtonPriceStates();
+
+			if ( IsEquipmentMenu() && m_bWaitingEquipMoneyCheck && !cl_close_buymenu_after_purchase.GetBool() )
+			{
+				m_bWaitingEquipMoneyCheck = false;
+				int nMinEquipPrice = GetMinEquipmentPrice();
+				if ( nMinEquipPrice > 0 && nAccount < nMinEquipPrice && GetWizardPanel() )
+				{
+					GetWizardPanel()->Close();
+					gViewPortInterface->ShowBackGround( false );
+				}
+			}
+		}
+	}
+
 	BaseClass::OnThink();
+}
+
+void CCSBuySubMenu::RefreshAllButtonPriceStates()
+{
+	for ( int i = 0; i < GetChildCount(); ++i )
+	{
+		BuyMouseOverPanelButton *pButton = dynamic_cast< BuyMouseOverPanelButton * >( GetChild( i ) );
+		if ( pButton )
+		{
+			pButton->SetPriceState();
+			pButton->SetMapTypeState();
+		}
+	}
+}
+
+int CCSBuySubMenu::FindButtonPriceForCommand( const char *command )
+{
+	if ( !command || !command[0] )
+		return 0;
+
+	for ( int i = 0; i < GetChildCount(); ++i )
+	{
+		BuyMouseOverPanelButton *pButton = dynamic_cast< BuyMouseOverPanelButton * >( GetChild( i ) );
+		if ( pButton && pButton->GetBuyCommand() && !Q_stricmp( pButton->GetBuyCommand(), command ) )
+		{
+			return pButton->GetCurrentPrice();
+		}
+	}
+	return 0;
+}
+
+int CCSBuySubMenu::GetMinEquipmentPrice()
+{
+	CCSGameRules *pRules = CSGameRules();
+	int nMinPrice = 0;
+
+	for ( int i = 0; i < GetChildCount(); ++i )
+	{
+		BuyMouseOverPanelButton *pButton = dynamic_cast< BuyMouseOverPanelButton * >( GetChild( i ) );
+		if ( !pButton || !pButton->IsVisible() || !pButton->IsEnabled() )
+			continue;
+
+		int nPrice = pButton->GetCurrentPrice();
+		if ( nPrice <= 0 )
+			continue;
+
+		if ( pRules )
+		{
+			if ( pRules->IsVIPMap() && pButton->GetASRestrict() )
+				continue;
+			if ( !pRules->IsBombDefuseMap() && pButton->GetDEUseOnly() )
+				continue;
+		}
+
+		if ( nMinPrice == 0 || nPrice < nMinPrice )
+		{
+			nMinPrice = nPrice;
+		}
+	}
+
+	return nMinPrice;
 }
 
 //-----------------------------------------------------------------------------
@@ -784,7 +882,44 @@ void CCSBuySubMenu::OnCommand( const char *command )
 		{
 			pPlayer->EmitSound( "BuyPreset.CantBuy" );
 		}
-		BaseClass::OnCommand( "vguicancel" );
+		if ( cl_close_buymenu_after_purchase.GetBool() || IsEquipmentMenu() )
+		{
+			BaseClass::OnCommand( "vguicancel" );
+		}
+		return;
+	}
+
+	if ( !cl_close_buymenu_after_purchase.GetBool() && !Q_strnicmp( command, "buy ", 4 ) )
+	{
+		C_CSPlayer *pPlayer = C_CSPlayer::GetLocalCSPlayer();
+		int nAccount = pPlayer ? pPlayer->GetAccount() : 0;
+
+		if ( IsEquipmentMenu() )
+		{
+			int nItemPrice = FindButtonPriceForCommand( command );
+			int nMinEquipPrice = GetMinEquipmentPrice();
+			int nExpectedAfter = nAccount - nItemPrice;
+
+			engine->ClientCmd( command );
+
+			if ( nMinEquipPrice > 0 && nExpectedAfter < nMinEquipPrice && GetWizardPanel() )
+			{
+				GetWizardPanel()->Close();
+				gViewPortInterface->ShowBackGround( false );
+			}
+			else
+			{
+				m_bWaitingEquipMoneyCheck = true;
+			}
+			return;
+		}
+
+		engine->ClientCmd( command );
+
+		if ( IsSubMenu() && GetWizardPanel() )
+		{
+			GetWizardPanel()->OnPrevButton();
+		}
 		return;
 	}
 

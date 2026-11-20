@@ -29,6 +29,8 @@ CBuySubMenu::CBuySubMenu(vgui::Panel *parent, const char *name) : WizardSubPanel
 {
 	m_NextPanel = NULL;
 	m_pFirstButton = NULL;
+	m_bIsSubMenu = false;
+	m_bIsEquipmentMenu = false;
 	SetProportional(true);
 	
 	m_pPanel = new EditablePanel( this, "ItemInfo" );// info window about these items
@@ -123,6 +125,11 @@ void CBuySubMenu::OnCommand( const char *command)
 			memset( &newEntry, 0x0, sizeof( newEntry ) );
 
 			CBuySubMenu *newMenu = CreateNewSubMenu();
+			newMenu->SetIsSubMenu( true );
+			if ( Q_stristr( command, "BuyEquipment" ) != NULL )
+			{
+				newMenu->SetIsEquipmentMenu( true );
+			}
 			newMenu->LoadControlSettings( command );
 			m_NextPanel = newMenu;
 			Q_strncpy( newEntry.filename, command, sizeof( newEntry.filename ) );

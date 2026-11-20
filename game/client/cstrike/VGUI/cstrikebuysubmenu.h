@@ -25,12 +25,19 @@ public:
 	CCSBuySubMenu (vgui::Panel *parent,const char *name = "BuySubMenu") : CBuySubMenu( parent, name )
 	{
 		m_backgroundLayoutFinished = false;
+		m_iLastAccount = -1;
+		m_bWaitingEquipMoneyCheck = false;
 	}; 
 	
+	virtual void SetVisible( bool state );
+
 protected:
 
 	virtual void OnThink();
 	void UpdateVestHelmPrice();
+	void RefreshAllButtonPriceStates();
+	int FindButtonPriceForCommand( const char *command );
+	int GetMinEquipmentPrice();
 
 	virtual void OnCommand( const char *command );
 
@@ -49,6 +56,8 @@ protected:
 	void HandleBlackMarket( void );
 
 	bool m_backgroundLayoutFinished;
+	int m_iLastAccount;
+	bool m_bWaitingEquipMoneyCheck;
 
 	// End background panel ---------------------------------------------------
 };

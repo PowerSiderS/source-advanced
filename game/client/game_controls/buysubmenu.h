@@ -32,6 +32,11 @@ public:
 
 	virtual void SetVisible( bool state );
 	virtual void DeleteSubPanels();
+
+	void SetIsSubMenu( bool bSubMenu ) { m_bIsSubMenu = bSubMenu; }
+	bool IsSubMenu( void ) const { return m_bIsSubMenu; }
+	void SetIsEquipmentMenu( bool bEquip ) { m_bIsEquipmentMenu = bEquip; }
+	bool IsEquipmentMenu( void ) const { return m_bIsEquipmentMenu; }
 		
 protected:
 
@@ -54,6 +59,9 @@ protected:
 	CUtlVector<SubMenuEntry_t> m_SubMenus; // a cache of buy submenus, so we don't need to construct them each time
 
 	vgui::WizardSubPanel *m_NextPanel;
+
+	bool m_bIsSubMenu;
+	bool m_bIsEquipmentMenu;
 };
 
 #endif // BUYSUBMENU_H

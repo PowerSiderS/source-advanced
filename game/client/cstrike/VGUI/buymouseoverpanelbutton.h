@@ -326,6 +326,11 @@ public:
 		m_iPrice = iPrice;
 	}
 
+	int GetCurrentPrice( void ) const
+	{
+		return m_iPrice;
+	}
+
 	void SetPreviousPrice( int iPrice )
 	{
 		m_iPreviousPrice = iPrice;

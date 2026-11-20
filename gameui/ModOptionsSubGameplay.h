@@ -55,6 +55,7 @@ private:
 	CCvarToggleCheckButton *m_pDisableTouchOnBuyMenu;
 	CCvarToggleCheckButton *m_pDrawTracers;
 	CCvarToggleCheckButton *m_pUseNewHeadbob;
+	CCvarToggleCheckButton *m_pCloseBuyMenuAfterPurchase;
 	CCvarToggleCheckButton *m_pColoredHud;
 	CColorPickerButton *m_pHudColor;
 

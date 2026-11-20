@@ -97,7 +97,9 @@ public:
 	virtual void RegenerateTextureBits( ITexture *pTexture, IVTFTexture *pVTFTexture, Rect_t *pRect );
  	virtual void Paint( void );
 	virtual void OnMousePressed( vgui::MouseCode code );
+	virtual void OnMouseDoublePressed( vgui::MouseCode code );
 	virtual void OnMouseReleased( vgui::MouseCode code );
+	virtual void OnMouseCaptureLost();
 	virtual void OnCursorMoved( int x, int y );
 
 	void SetMode( ColorType_t type, ColorChannel_t channel );
@@ -156,7 +158,7 @@ CColorXYPreview::CColorXYPreview( vgui::Panel *pParent, const char *pName ) : Ba
 	SetMode( COLOR_TYPE_HSV, CHANNEL_HUE );
 	SetMouseInputEnabled( true );
 	m_hPickerCursor = surface()->CreateCursorFromFile( "resource/colorpicker.cur" );
-	SetCursor( m_hPickerCursor != dc_none ? m_hPickerCursor : dc_crosshair );
+	SetCursor( ( m_hPickerCursor != dc_user && m_hPickerCursor != dc_none ) ? m_hPickerCursor : dc_crosshair );
 	m_bDraggingMouse = false;
 }
 
@@ -354,18 +356,20 @@ void CColorXYPreview::OnMousePressed( vgui::MouseCode code )
 
 	if ( code == MOUSE_LEFT )
 	{
-		if ( !m_bDraggingMouse )
-		{
-			m_bDraggingMouse = true;
-			input()->SetMouseCapture(GetVPanel());
+		m_bDraggingMouse = true;
+		input()->SetMouseCapture( GetVPanel() );
 
-			int x, y;
-			input()->GetCursorPos( x, y );
-			ScreenToLocal( x, y );
+		int x, y;
+		input()->GetCursorPosition( x, y );
+		ScreenToLocal( x, y );
 
-			UpdateColorFromMouse( x, y );
-		}
+		UpdateColorFromMouse( x, y );
 	}
+}
+
+void CColorXYPreview::OnMouseDoublePressed( vgui::MouseCode code )
+{
+	OnMousePressed( code );
 }
 
 void CColorXYPreview::OnMouseReleased( vgui::MouseCode code )
@@ -380,6 +384,12 @@ void CColorXYPreview::OnMouseReleased( vgui::MouseCode code )
 			input()->SetMouseCapture( (VPANEL)0 );
 		}
 	}
+}
+
+void CColorXYPreview::OnMouseCaptureLost()
+{
+	BaseClass::OnMouseCaptureLost();
+	m_bDraggingMouse = false;
 }
 
 void CColorXYPreview::OnCursorMoved( int x, int y )
@@ -409,7 +419,9 @@ public:
 	virtual void Paint( void );
 	virtual void OnCursorMoved( int x,int y );
 	virtual void OnMousePressed( vgui::MouseCode code );
+	virtual void OnMouseDoublePressed( vgui::MouseCode code );
 	virtual void OnMouseReleased( vgui::MouseCode code );
+	virtual void OnMouseCaptureLost();
 
 	void SetMode( ColorType_t type, ColorChannel_t channel );
 	void SetColor( const RGB888_t &color, const Vector &hsvColor );
@@ -620,18 +632,20 @@ void CColorZPreview::OnMousePressed( vgui::MouseCode code )
 
 	if ( code == MOUSE_LEFT )
 	{
-		if ( !m_bDraggingMouse )
-		{
-			m_bDraggingMouse = true;
-			input()->SetMouseCapture(GetVPanel());
+		m_bDraggingMouse = true;
+		input()->SetMouseCapture( GetVPanel() );
 
-			int x, y;
-			input()->GetCursorPos( x, y );
-			ScreenToLocal( x, y );
+		int x, y;
+		input()->GetCursorPosition( x, y );
+		ScreenToLocal( x, y );
 
-			UpdateColorFromMouse( x, y );
-		}
+		UpdateColorFromMouse( x, y );
 	}
+}
+
+void CColorZPreview::OnMouseDoublePressed( vgui::MouseCode code )
+{
+	OnMousePressed( code );
 }
 
 void CColorZPreview::OnMouseReleased( vgui::MouseCode code )
@@ -646,6 +660,12 @@ void CColorZPreview::OnMouseReleased( vgui::MouseCode code )
 			input()->SetMouseCapture( (VPANEL)0 );
 		}
 	}
+}
+
+void CColorZPreview::OnMouseCaptureLost()
+{
+	BaseClass::OnMouseCaptureLost();
+	m_bDraggingMouse = false;
 }
 
 void CColorZPreview::OnCursorMoved( int x, int y )
@@ -786,7 +806,7 @@ void CColorPickerPanel::OnMousePressed( vgui::MouseCode code )
 		// Clicking inside the initial color window
 		// resets the current color to the initial color
 		int x, y;
-		input()->GetCursorPos( x, y );
+		input()->GetCursorPosition( x, y );
 		ScreenToLocal( x, y );
 
 		int cx, cy, cw, ch;

@@ -1357,10 +1357,14 @@ static void SortSurfacesByLightmapID( SurfaceHandle_t *pToSort, int iSurfaceCoun
 		}
 
 		int iOffsetTable[256];
-		iOffsetTable[0] = 0;
-		for( int i = 0; i != 255; ++i )
+		int iRunningOffset = 0;
+#if defined( _MSC_VER )
+#pragma loop( no_vector )
+#endif
+		for( int i = 0; i < 256; ++i )
 		{
-			iOffsetTable[i + 1] = iOffsetTable[i] + iCounts[i];
+			iOffsetTable[i] = iRunningOffset;
+			iRunningOffset += iCounts[i];
 		}
 
 		for( int i = 0; i != iSurfaceCount; ++i )

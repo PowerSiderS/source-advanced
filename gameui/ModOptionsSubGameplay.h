@@ -14,6 +14,7 @@
 
 class CCvarToggleCheckButton;
 class CCvarSlider;
+class CColorPickerButton;
 
 //-----------------------------------------------------------------------------
 // Purpose: gameplay options property page
@@ -34,8 +35,13 @@ protected:
 	MESSAGE_FUNC_PTR( OnTextChanged, "TextChanged", panel );
 	MESSAGE_FUNC_PARAMS( OnSliderMoved, "SliderMoved", data );
 	MESSAGE_FUNC( OnCheckButtonChecked, "CheckButtonChecked" );
+	MESSAGE_FUNC_PARAMS( OnColorPickerPicked, "ColorPickerPicked", data );
+	MESSAGE_FUNC_PARAMS( OnColorPickerPreview, "ColorPickerPreview", data );
+	MESSAGE_FUNC_PARAMS( OnColorPickerCancel, "ColorPickerCancel", data );
 
 private:
+	void ApplyHudColorConVar( const Color &clr );
+
 	CCvarSlider *m_pViewModelFOV;
 	CCvarSlider *m_pViewModelRight;
 	CCvarSlider *m_pViewModelUp;
@@ -49,6 +55,12 @@ private:
 	CCvarToggleCheckButton *m_pDisableTouchOnBuyMenu;
 	CCvarToggleCheckButton *m_pDrawTracers;
 	CCvarToggleCheckButton *m_pUseNewHeadbob;
+	CCvarToggleCheckButton *m_pColoredHud;
+	CColorPickerButton *m_pHudColor;
+
+	Color m_HudColor;
+	Color m_SavedHudColor;
+	bool m_bHudColorDirty;
 };
 
 #endif // MODOPTIONSSUBGAMEPLAY_H

@@ -6,23 +6,47 @@
 
 #include "ModOptionsSubGameplay.h"
 
+#include <stdio.h>
 #include <vgui_controls/Label.h>
 #include <vgui/IVGui.h>
 
 #include "CvarToggleCheckButton.h"
 #include "cvarslider.h"
+#include "matsys_controls/colorpickerpanel.h"
 #include "tier1/KeyValues.h"
+#include "tier1/convar.h"
 
 // memdbgon must be the last include file in this file.
 #include <tier0/memdbgon.h>
 
 using namespace vgui;
 
+static Color ParseHudColorString( const char *pszValue )
+{
+	int r = 255, g = 176, b = 0, a = 255;
+	if ( pszValue && pszValue[0] )
+	{
+		int nRead = sscanf( pszValue, "%d %d %d %d", &r, &g, &b, &a );
+		if ( nRead == 3 )
+		{
+			a = 255;
+		}
+		else if ( nRead < 3 )
+		{
+			r = 255; g = 176; b = 0; a = 255;
+		}
+	}
+	return Color( clamp( r, 0, 255 ), clamp( g, 0, 255 ), clamp( b, 0, 255 ), clamp( a, 0, 255 ) );
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: Gameplay options property page.
 //-----------------------------------------------------------------------------
 CModOptionsSubGameplay::CModOptionsSubGameplay( vgui::Panel *parent )
 	: vgui::PropertyPage( parent, "ModOptionsSubGameplay" )
+	, m_HudColor( 255, 176, 0, 255 )
+	, m_SavedHudColor( 255, 176, 0, 255 )
+	, m_bHudColorDirty( false )
 {
 	new Label( this, "ViewModelFOVLabel", "#GameUI_Main_ViewModelFOV" );
 	new Label( this, "ViewModelRightLabel", "#GameUI_Main_ViewModelRightLeft" );
@@ -68,6 +92,10 @@ CModOptionsSubGameplay::CModOptionsSubGameplay( vgui::Panel *parent )
 	m_pUseNewHeadbob = new CCvarToggleCheckButton(
 		this, "UseNewHeadbobCheckBox", "#GameUI_Main_CSGOBobbing",
 		"cl_use_new_headbob" );
+	m_pColoredHud = new CCvarToggleCheckButton(
+		this, "ColoredHudCheckBox", "#GameUI_Main_ColoredHud",
+		"cl_hud_color_enable" );
+	m_pHudColor = new CColorPickerButton( this, "HudColor", this );
 
 	m_pViewModelFOV->AddActionSignalTarget( this );
 	m_pViewModelRight->AddActionSignalTarget( this );
@@ -76,10 +104,12 @@ CModOptionsSubGameplay::CModOptionsSubGameplay( vgui::Panel *parent )
 	m_pRadarScale->AddActionSignalTarget( this );
 	m_pRadarAlpha->AddActionSignalTarget( this );
 	m_pRadarRotate->AddActionSignalTarget( this );
+	m_pRadarSquare->AddActionSignalTarget( this );
 	m_pDisplayC4Timer->AddActionSignalTarget( this );
 	m_pDisableTouchOnBuyMenu->AddActionSignalTarget( this );
 	m_pDrawTracers->AddActionSignalTarget( this );
 	m_pUseNewHeadbob->AddActionSignalTarget( this );
+	m_pColoredHud->AddActionSignalTarget( this );
 
 	LoadControlSettings( "Resource/ModOptionsSubGameplay.res" );
 }
@@ -87,6 +117,22 @@ CModOptionsSubGameplay::CModOptionsSubGameplay( vgui::Panel *parent )
 //-----------------------------------------------------------------------------
 CModOptionsSubGameplay::~CModOptionsSubGameplay()
 {
+	if ( m_bHudColorDirty )
+	{
+		ApplyHudColorConVar( m_SavedHudColor );
+	}
+}
+
+//-----------------------------------------------------------------------------
+void CModOptionsSubGameplay::ApplyHudColorConVar( const Color &clr )
+{
+	ConVarRef cl_hud_color( "cl_hud_color" );
+	if ( cl_hud_color.IsValid() )
+	{
+		char szBuf[64];
+		Q_snprintf( szBuf, sizeof( szBuf ), "%d %d %d %d", clr.r(), clr.g(), clr.b(), clr.a() );
+		cl_hud_color.SetValue( szBuf );
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -115,6 +161,33 @@ void CModOptionsSubGameplay::OnCheckButtonChecked()
 }
 
 //-----------------------------------------------------------------------------
+void CModOptionsSubGameplay::OnColorPickerPicked( KeyValues *data )
+{
+	if ( !data )
+		return;
+
+	m_HudColor = data->GetColor( "color" );
+	m_bHudColorDirty = true;
+	ApplyHudColorConVar( m_HudColor );
+	OnControlModified();
+}
+
+//-----------------------------------------------------------------------------
+void CModOptionsSubGameplay::OnColorPickerPreview( KeyValues *data )
+{
+	if ( !data )
+		return;
+
+	ApplyHudColorConVar( data->GetColor( "color" ) );
+}
+
+//-----------------------------------------------------------------------------
+void CModOptionsSubGameplay::OnColorPickerCancel( KeyValues *data )
+{
+	ApplyHudColorConVar( m_HudColor );
+}
+
+//-----------------------------------------------------------------------------
 void CModOptionsSubGameplay::OnResetData()
 {
 	m_pViewModelFOV->Reset();
@@ -130,6 +203,20 @@ void CModOptionsSubGameplay::OnResetData()
 	m_pDisableTouchOnBuyMenu->Reset();
 	m_pDrawTracers->Reset();
 	m_pUseNewHeadbob->Reset();
+	m_pColoredHud->Reset();
+
+	ConVarRef cl_hud_color( "cl_hud_color" );
+	if ( cl_hud_color.IsValid() )
+	{
+		m_HudColor = ParseHudColorString( cl_hud_color.GetString() );
+	}
+	else
+	{
+		m_HudColor.SetColor( 255, 176, 0, 255 );
+	}
+	m_SavedHudColor = m_HudColor;
+	m_bHudColorDirty = false;
+	m_pHudColor->SetColor( m_HudColor );
 }
 
 //-----------------------------------------------------------------------------
@@ -148,4 +235,9 @@ void CModOptionsSubGameplay::OnApplyChanges()
 	m_pDisableTouchOnBuyMenu->ApplyChanges();
 	m_pDrawTracers->ApplyChanges();
 	m_pUseNewHeadbob->ApplyChanges();
+	m_pColoredHud->ApplyChanges();
+
+	ApplyHudColorConVar( m_HudColor );
+	m_SavedHudColor = m_HudColor;
+	m_bHudColorDirty = false;
 }

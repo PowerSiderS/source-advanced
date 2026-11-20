@@ -174,6 +174,11 @@ public:
 	Color						m_clrCaution;
 	Color						m_clrYellowish;
 
+	bool						IsCustomHudColorEnabled( void ) const;
+	Color						GetCustomHudColor( int nAlphaOverride = -1 ) const;
+	Color						ApplyHudColor( const Color &defaultColor, bool bScaleAlpha = false ) const;
+	void						UpdateCustomHudColor( void );
+
 	CUtlVector< CHudElement * >	m_HudList;
 
 private:
@@ -182,6 +187,9 @@ private:
 	void						SetupNewHudTexture( CHudTexture *t );
 
 	bool						m_bHudTexturesLoaded;
+
+	Color						m_clrSchemeNormal;
+	Color						m_clrCustomHud;
 
 	// Global list of known icons
 	CUtlDict< CHudTexture *, int >		m_Icons;

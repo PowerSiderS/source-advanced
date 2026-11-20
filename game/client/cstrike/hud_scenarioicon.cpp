@@ -69,13 +69,14 @@ void CHudScenarioIcon::Paint()
 
 			C_PlantedC4 *pC4 = g_PlantedC4s[0];
 
-			Color c = m_clrIcon;
+			Color c = gHUD.ApplyHudColor( m_clrIcon );
+			int nBaseAlpha = gHUD.IsCustomHudColorEnabled() ? c.a() : 255;
 
-			c[3] = 80;
+			c[3] = ( 80 * nBaseAlpha ) / 255;
 
 			if( pC4->m_flNextGlow - gpGlobals->curtime < 0.1 )
 			{
-				c[3] = 255;
+				c[3] = nBaseAlpha;
 			}
 
 			if( pC4->IsBombActive() )
@@ -97,10 +98,11 @@ void CHudScenarioIcon::Paint()
 		{
 			int xpos = 0;
 			int iconWidth = m_pHostageIcon->Width();
+			Color clrHostage = gHUD.ApplyHudColor( m_clrIcon );
 
 			for(int i=0;i<pRules->GetNumHostagesRemaining();i++)
 			{
-				m_pHostageIcon->DrawSelf( xpos, 0, m_clrIcon );
+				m_pHostageIcon->DrawSelf( xpos, 0, clrHostage );
 				xpos += iconWidth;
 			}
 		}

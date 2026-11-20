@@ -375,6 +375,14 @@ int	CHudElement::GetRenderGroupPriority( void )
 
 CHud gHUD;  // global HUD object
 
+static void OnHudColorConVarChanged( IConVar *var, const char *pOldValue, float flOldValue )
+{
+	gHUD.UpdateCustomHudColor();
+}
+
+ConVar cl_hud_color_enable( "cl_hud_color_enable", "0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Enable custom HUD coloring.", OnHudColorConVarChanged );
+ConVar cl_hud_color( "cl_hud_color", "255 176 0 255", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Custom HUD RGBA color (R G B [A]).", OnHudColorConVarChanged );
+
 DECLARE_MESSAGE(gHUD, ResetHUD);
 
 #ifdef CSTRIKE_DLL
@@ -386,6 +394,8 @@ CHud::CHud()
 	SetDefLessFunc( m_RenderGroups );
 
 	m_flScreenShotTime = -1;
+	m_clrSchemeNormal.SetColor( 255, 208, 64, 255 );
+	m_clrCustomHud.SetColor( 255, 176, 0, 255 );
 }
 
 //-----------------------------------------------------------------------------
@@ -476,9 +486,52 @@ void CHud::Init( void )
 //-----------------------------------------------------------------------------
 void CHud::InitColors( vgui::IScheme *scheme )
 {
-	m_clrNormal = scheme->GetColor( "Normal", Color( 255, 208, 64 ,255 ) );
+	m_clrSchemeNormal = scheme->GetColor( "Normal", Color( 255, 208, 64 ,255 ) );
+	m_clrNormal = m_clrSchemeNormal;
 	m_clrCaution = scheme->GetColor( "Caution", Color( 255, 48, 0, 255 ) );
 	m_clrYellowish = scheme->GetColor( "Yellowish", Color( 255, 160, 0, 255 ) );
+	UpdateCustomHudColor();
+}
+
+void CHud::UpdateCustomHudColor( void )
+{
+	int r = 255, g = 176, b = 0, a = 255;
+	const char *pszColor = cl_hud_color.GetString();
+	if ( pszColor && pszColor[0] )
+	{
+		int nRead = sscanf( pszColor, "%d %d %d %d", &r, &g, &b, &a );
+		if ( nRead == 3 )
+		{
+			a = 255;
+		}
+		else if ( nRead < 3 )
+		{
+			r = 255; g = 176; b = 0; a = 255;
+		}
+	}
+
+	m_clrCustomHud.SetColor( clamp( r, 0, 255 ), clamp( g, 0, 255 ), clamp( b, 0, 255 ), clamp( a, 0, 255 ) );
+	m_clrNormal = cl_hud_color_enable.GetBool() ? m_clrCustomHud : m_clrSchemeNormal;
+}
+
+bool CHud::IsCustomHudColorEnabled( void ) const
+{
+	return cl_hud_color_enable.GetBool();
+}
+
+Color CHud::GetCustomHudColor( int nAlphaOverride ) const
+{
+	int a = ( nAlphaOverride >= 0 ) ? clamp( nAlphaOverride, 0, 255 ) : m_clrCustomHud.a();
+	return Color( m_clrCustomHud.r(), m_clrCustomHud.g(), m_clrCustomHud.b(), a );
+}
+
+Color CHud::ApplyHudColor( const Color &defaultColor, bool bScaleAlpha ) const
+{
+	if ( !cl_hud_color_enable.GetBool() )
+		return defaultColor;
+
+	int a = bScaleAlpha ? ( ( m_clrCustomHud.a() * defaultColor.a() ) / 255 ) : m_clrCustomHud.a();
+	return Color( m_clrCustomHud.r(), m_clrCustomHud.g(), m_clrCustomHud.b(), clamp( a, 0, 255 ) );
 }
 
 //-----------------------------------------------------------------------------

@@ -22,6 +22,9 @@ using namespace vgui;
 CProceduralTexturePanel::CProceduralTexturePanel( vgui::Panel *pParent, const char *pName ) : BaseClass( pParent, pName )
 {
 	m_pImageBuffer = NULL;
+	m_nTextureID = -1;
+	m_nWidth = 0;
+	m_nHeight = 0;
 	m_bMaintainProportions = false;
 	m_bUsePaintRect = false;
 	m_PaintRect.x = m_PaintRect.y = 0;
@@ -39,6 +42,11 @@ CProceduralTexturePanel::~CProceduralTexturePanel()
 //-----------------------------------------------------------------------------
 bool CProceduralTexturePanel::Init( int nWidth, int nHeight, bool bAllocateImageBuffer )
 {
+	if ( !MaterialSystem() || !MatSystemSurface() || nWidth <= 0 || nHeight <= 0 )
+		return false;
+
+	CleanUp();
+
 	m_nWidth = nWidth;
 	m_nHeight = nHeight;
 	if ( bAllocateImageBuffer )
@@ -50,8 +58,9 @@ bool CProceduralTexturePanel::Init( int nWidth, int nHeight, bool bAllocateImage
 	m_TextureSubRect.width = nWidth;
 	m_TextureSubRect.height = nHeight;
 
+	static unsigned int s_nProceduralTextureCounter = 0;
 	char pTemp[512];
-	Q_snprintf( pTemp, 512, "__%s", GetName() );
+	Q_snprintf( pTemp, sizeof( pTemp ), "__%s_%u", GetName(), ++s_nProceduralTextureCounter );
 
 	ITexture *pTex = MaterialSystem()->CreateProceduralTexture( pTemp, TEXTURE_GROUP_VGUI,
 			m_nWidth, m_nHeight,
@@ -62,6 +71,9 @@ bool CProceduralTexturePanel::Init( int nWidth, int nHeight, bool bAllocateImage
 #endif 
 			TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT | TEXTUREFLAGS_NOMIP | 
 			TEXTUREFLAGS_NOLOD | TEXTUREFLAGS_PROCEDURAL | TEXTUREFLAGS_SINGLECOPY );
+	if ( !pTex )
+		return false;
+
 	pTex->SetTextureRegenerator( this );
 	m_ProceduralTexture.Init( pTex );
 
@@ -96,6 +108,12 @@ void CProceduralTexturePanel::MaintainProportions( bool bEnable )
 //-----------------------------------------------------------------------------
 void CProceduralTexturePanel::CleanUp()
 {
+	if ( m_nTextureID != -1 && MatSystemSurface() )
+	{
+		MatSystemSurface()->DestroyTextureID( m_nTextureID );
+		m_nTextureID = -1;
+	}
+
 	if ( (ITexture*)m_ProceduralTexture )
 	{
 		m_ProceduralTexture->SetTextureRegenerator( NULL );
@@ -189,7 +207,10 @@ void CProceduralTexturePanel::SetTextureSubRect( const Rect_t &subRect )
 //-----------------------------------------------------------------------------
 void CProceduralTexturePanel::DownloadTexture()
 {
-	m_ProceduralTexture->Download();
+	if ( (ITexture*)m_ProceduralTexture )
+	{
+		m_ProceduralTexture->Download();
+	}
 }
 
 
@@ -198,6 +219,9 @@ void CProceduralTexturePanel::DownloadTexture()
 //-----------------------------------------------------------------------------
 void CProceduralTexturePanel::Paint( void )
 {
+	if ( m_nTextureID == -1 || m_nWidth <= 0 || m_nHeight <= 0 )
+		return;
+
 	vgui::surface()->DrawSetTexture( m_nTextureID );
 	vgui::surface()->DrawSetColor( 255, 255, 255, 255 );
 

@@ -88,7 +88,7 @@ void CHudShoppingCart::Paint()
 		int x, y, w, h;
 		GetBounds( x, y, w, h );
 
-		m_pCartIcon->DrawSelf( 0, 0, w, h, m_clrIcon );
+		m_pCartIcon->DrawSelf( 0, 0, w, h, gHUD.ApplyHudColor( m_clrIcon ) );
 	}
 }
 

@@ -252,7 +252,7 @@ void CHudWeaponSelection::Paint()
 				DrawBox(xpos, ypos, largeBoxWide, largeBoxTall, selectedColor, m_flSelectionAlphaOverride, bFirstItem ? i + 1 : -1);
 
 				// draw icon
-				Color col = GetFgColor();
+				Color col = gHUD.ApplyHudColor( GetFgColor() );
 				// icons use old system, drawing in screen space
 				if ( pWeapon->GetSpriteActive() )
 				{
@@ -264,13 +264,13 @@ void CHudWeaponSelection::Paint()
 					else if (pWeapon == pSelectedWeapon)
 					{
 						// currently selected weapon, display brighter
-						col[3] = m_flSelectionAlphaOverride;
+						col[3] = gHUD.IsCustomHudColorEnabled() ? ( ( col[3] * (int)m_flSelectionAlphaOverride ) / 255 ) : m_flSelectionAlphaOverride;
 					}
 					pWeapon->GetSpriteActive()->DrawSelf( xpos + m_flIconXPos, ypos + m_flIconYPos, col );
 				}
 
 				// draw text
-				col = m_TextColor;
+				col = gHUD.ApplyHudColor( m_TextColor );
 				const FileWeaponInfo_t &weaponInfo = pWeapon->GetWpnData();
 
 				if (pWeapon == pSelectedWeapon)
@@ -390,7 +390,7 @@ void CHudWeaponSelection::DrawBox(int x, int y, int wide, int tall, Color color,
 	// draw the number
 	if (number >= 0)
 	{
-		Color numberColor = m_NumberColor;
+		Color numberColor = gHUD.ApplyHudColor( m_NumberColor );
 		numberColor[3] *= normalizedAlpha / 255.0f;
 		surface()->DrawSetTextColor(numberColor);
 		surface()->DrawSetTextFont(m_hNumberFont);

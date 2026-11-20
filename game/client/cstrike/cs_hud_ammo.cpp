@@ -226,10 +226,7 @@ void CHudAmmo::SetAmmo2(int ammo2, bool playAnimation)
 
 void CHudAmmo::Paint( void )
 {
-	float alpha = 1.0f;
-	Color fgColor = GetFgColor();
-	fgColor[3] *= alpha;
-	SetFgColor( fgColor );
+	Color fgColor = gHUD.ApplyHudColor( GetFgColor() );
 
 	int x, y;
 
@@ -252,15 +249,14 @@ void CHudAmmo::Paint( void )
 	x += ( 3 - digits ) * charWidth;
 
 	// draw primary ammo
-	vgui::surface()->DrawSetTextColor(GetFgColor());
+	vgui::surface()->DrawSetTextColor( fgColor );
 	PaintNumbers( m_hNumberFont, x, y, m_iAmmo );
 
 	//draw reserve ammo
 	if( m_bUsesClips )
 	{
 		//draw the divider
-		Color c = GetFgColor();
-		vgui::surface()->DrawSetColor(c);
+		vgui::surface()->DrawSetColor( fgColor );
 		vgui::surface()->DrawSetTexture( m_iAdditiveWhiteID );
 		vgui::surface()->DrawTexturedRect( bar_xpos, bar_ypos, bar_xpos + bar_width, bar_ypos + bar_height );
 
@@ -268,7 +264,7 @@ void CHudAmmo::Paint( void )
 		x = digit2_xpos + ( 3 - digits ) * charWidth;
 
 		// draw secondary ammo
-		vgui::surface()->DrawSetTextColor(GetFgColor());
+		vgui::surface()->DrawSetTextColor( fgColor );
 		PaintNumbers( m_hNumberFont, x, digit2_ypos, m_iAmmo2 );
 	}
 
@@ -286,7 +282,7 @@ void CHudAmmo::Paint( void )
 			float scale = icon_tall / (float)icon->Height();
 			float icon_wide = ( scale ) * (float)icon->Width();
 
-			icon->DrawSelf( icon_xpos, icon_ypos, icon_wide, icon_tall, GetFgColor() );
+			icon->DrawSelf( icon_xpos, icon_ypos, icon_wide, icon_tall, fgColor );
 		}
 	}
 }

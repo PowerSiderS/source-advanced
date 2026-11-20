@@ -65,6 +65,9 @@ private:
 	float icon_tall;
 	float icon_wide;
 
+	Color m_clrBaseFg;
+	Color m_clrLowHealth;
+
 };
 
 DECLARE_HUDELEMENT( CHudHealth );
@@ -93,6 +96,9 @@ void CHudHealth::Init()
 void CHudHealth::ApplySchemeSettings( IScheme *scheme )
 {
 	BaseClass::ApplySchemeSettings( scheme );
+
+	m_clrBaseFg = scheme->GetColor( "Panel.FgColor", Color( 255, 176, 0, 120 ) );
+	m_clrLowHealth = scheme->GetColor( "HudIcon_Red", Color( 160, 0, 0, 255 ) );
 
 	if( !m_pHealthIcon )
 	{
@@ -165,11 +171,32 @@ void CHudHealth::OnThink()
 
 void CHudHealth::Paint( void )
 {
+	Color origFg = GetFgColor();
+	Color drawFg = origFg;
+
+	if ( gHUD.IsCustomHudColorEnabled() )
+	{
+		Color customClr = gHUD.GetCustomHudColor();
+		int baseG = MAX( 1, (int)m_clrBaseFg.g() );
+		float t = clamp( (float)origFg.g() / (float)baseG, 0.0f, 1.0f );
+		drawFg.SetColor(
+			(int)( m_clrLowHealth.r() + ( customClr.r() - m_clrLowHealth.r() ) * t ),
+			(int)( m_clrLowHealth.g() + ( customClr.g() - m_clrLowHealth.g() ) * t ),
+			(int)( m_clrLowHealth.b() + ( customClr.b() - m_clrLowHealth.b() ) * t ),
+			(int)( m_clrLowHealth.a() + ( customClr.a() - m_clrLowHealth.a() ) * t ) );
+		SetFgColor( drawFg );
+	}
+
 	if( m_pHealthIcon )
 	{
-		m_pHealthIcon->DrawSelf( icon_xpos, icon_ypos, icon_wide, icon_tall, GetFgColor() );
+		m_pHealthIcon->DrawSelf( icon_xpos, icon_ypos, icon_wide, icon_tall, drawFg );
 	}
 
 	//draw the health icon
 	BaseClass::Paint();
+
+	if ( gHUD.IsCustomHudColorEnabled() )
+	{
+		SetFgColor( origFg );
+	}
 }

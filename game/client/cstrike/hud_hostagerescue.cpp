@@ -74,7 +74,7 @@ void CHudHostageRescueZone::Paint()
 		int x, y, w, h;
 		GetBounds( x, y, w, h );
 
-		m_pIcon->DrawSelf( 0, 0, w, h, m_clrIcon );
+		m_pIcon->DrawSelf( 0, 0, w, h, gHUD.ApplyHudColor( m_clrIcon ) );
 	}
 }
 

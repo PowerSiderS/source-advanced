@@ -47,6 +47,7 @@ private:
 
 	Color m_clrRed;
 	Color m_clrGreen;
+	Color m_clrBaseFg;
 	Color m_clrDeltaColor;
 
 	CPanelAnimationVarAliasType( float, icon_xpos, "icon_xpos", "0", "proportional_float" );

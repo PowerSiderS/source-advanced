@@ -321,8 +321,9 @@ void CHudHistoryResource::Paint( void )
 
 			float elapsed = m_PickupHistory[i].DisplayTime - gpGlobals->curtime;
 			float scale = elapsed * 80;
-			Color clr = gHUD.m_clrNormal;
-			clr[3] = MIN( scale, 255 );
+			Color clr = gHUD.ApplyHudColor( gHUD.m_clrNormal );
+			int nFadeAlpha = (int)MIN( scale, 255.0f );
+			clr[3] = gHUD.IsCustomHudColorEnabled() ? ( ( clr[3] * nFadeAlpha ) / 255 ) : nFadeAlpha;
 
 			bool bUseAmmoFullMsg = false;
 

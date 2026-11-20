@@ -92,7 +92,7 @@ void CHudC4::Paint()
 		m_pIcon = gHUD.GetIcon( "c4" );
 	}
 
-	C_CSPlayer *pPlayer = C_CSPlayer::GetLocalCSPlayer();
+	C_CSPlayer *pPlayer = GetLocalOrInEyeCSPlayer();
 
 	if ( !pPlayer )
 		return;
@@ -121,7 +121,7 @@ void CHudC4::Paint()
 		}
 		else
 		{
-			m_pIcon->DrawSelf( 0, 0, w, h, m_clrIcon );
+			m_pIcon->DrawSelf( 0, 0, w, h, gHUD.ApplyHudColor( m_clrIcon ) );
 		}
 	}
 }

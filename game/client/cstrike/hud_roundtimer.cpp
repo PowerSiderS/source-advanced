@@ -132,9 +132,11 @@ void CHudRoundTimer::Think()
 	}
 	SetVisible( true );
 
+	Color baseColor = gHUD.ApplyHudColor( m_TextColor );
+
 	if(timer > 30)
 	{
-		SetFgColor(m_TextColor);
+		SetFgColor(baseColor);
 		return;
 	}
 	
@@ -191,11 +193,11 @@ void CHudRoundTimer::Think()
 	if( m_bFlash )
 	{
 		startValue = m_FlashColor;
-		endValue = m_TextColor;
+		endValue = baseColor;
 	}
 	else
 	{
-		startValue = m_TextColor;
+		startValue = baseColor;
 		endValue = m_FlashColor;
 	}
 
@@ -237,6 +239,10 @@ void CHudRoundTimer::Paint()
 			if ( iTimeLeft <= 10 )
 			{
 				SetFgColor( Color( 255, 0, 0, 255 ) );
+			}
+			else
+			{
+				SetFgColor( gHUD.ApplyHudColor( m_TextColor ) );
 			}
 		}
 	}
@@ -280,6 +286,7 @@ void CHudRoundTimer::Paint()
 void CHudRoundTimer::PaintTime(HFont font, int xpos, int ypos, int mins, int secs)
 {
 	surface()->DrawSetTextFont(font);
+	surface()->DrawSetTextColor( GetFgColor() );
 	wchar_t unicode[6];
 	V_snwprintf(unicode, ARRAYSIZE(unicode), L"%d:%.2d", mins, secs);
 	

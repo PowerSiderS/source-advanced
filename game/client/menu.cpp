@@ -171,8 +171,8 @@ void CHudMenu::Paint()
 	// center it
 	int x = 20;
 
-	Color	menuColor = m_MenuColor;
-	Color itemColor = m_ItemColor;
+	Color menuColor = gHUD.ApplyHudColor( m_MenuColor, true );
+	Color itemColor = gHUD.ApplyHudColor( m_ItemColor, true );
 
 	int c = m_Processed.Count();
 

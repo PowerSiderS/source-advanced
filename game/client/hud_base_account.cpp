@@ -37,6 +37,7 @@ void CHudBaseAccount::ApplySchemeSettings(vgui::IScheme *pScheme)
 
 	m_clrRed	= pScheme->GetColor( "HudIcon_Red", Color( 255, 16, 16, 255 ) );
 	m_clrGreen	= pScheme->GetColor( "HudIcon_Green", Color( 16, 255, 16, 255 ) );
+	m_clrBaseFg	= pScheme->GetColor( "Panel.FgColor", Color( 255, 176, 0, 120 ) );
 
 	m_pAccountIcon = gHUD.GetIcon( "dollar_sign" );
 	m_pPlusIcon = gHUD.GetIcon( "plus_sign" );
@@ -102,15 +103,45 @@ void CHudBaseAccount::Paint()
 		m_pszQueuedAnimationName = NULL;
 	}
 
+	Color fgClr = GetFgColor();
+	if ( gHUD.IsCustomHudColorEnabled() )
+	{
+		Color customClr = gHUD.GetCustomHudColor();
+		if ( fgClr.r() == m_clrBaseFg.r() && fgClr.g() == m_clrBaseFg.g() && fgClr.b() == m_clrBaseFg.b() )
+		{
+			fgClr = customClr;
+		}
+		else if ( fgClr.g() >= fgClr.r() )
+		{
+			// Fading from HudIcon_Green back to base color
+			float t = clamp( (float)fgClr.r() / (float)MAX( 1, (int)m_clrBaseFg.r() ), 0.0f, 1.0f );
+			fgClr.SetColor(
+				(int)( m_clrGreen.r() + ( customClr.r() - m_clrGreen.r() ) * t ),
+				(int)( m_clrGreen.g() + ( customClr.g() - m_clrGreen.g() ) * t ),
+				(int)( m_clrGreen.b() + ( customClr.b() - m_clrGreen.b() ) * t ),
+				(int)( m_clrGreen.a() + ( customClr.a() - m_clrGreen.a() ) * t ) );
+		}
+		else
+		{
+			// Fading from HudIcon_Red back to base color
+			float t = clamp( (float)fgClr.g() / (float)MAX( 1, (int)m_clrBaseFg.g() ), 0.0f, 1.0f );
+			fgClr.SetColor(
+				(int)( m_clrRed.r() + ( customClr.r() - m_clrRed.r() ) * t ),
+				(int)( m_clrRed.g() + ( customClr.g() - m_clrRed.g() ) * t ),
+				(int)( m_clrRed.b() + ( customClr.b() - m_clrRed.b() ) * t ),
+				(int)( m_clrRed.a() + ( customClr.a() - m_clrRed.a() ) * t ) );
+		}
+	}
+
 	if( m_pAccountIcon )
 	{
-		m_pAccountIcon->DrawSelf( icon_xpos, icon_ypos, icon_wide, icon_tall, GetFgColor() );
+		m_pAccountIcon->DrawSelf( icon_xpos, icon_ypos, icon_wide, icon_tall, fgClr );
 	}
 
 	int xpos = digit_xpos - GetNumberWidth( m_hNumberFont, account );
 
 	// draw current account
-	vgui::surface()->DrawSetTextColor(GetFgColor());
+	vgui::surface()->DrawSetTextColor( fgClr );
 	PaintNumbers( m_hNumberFont, xpos, digit_ypos, account );
 
 	//draw account additions / subtractions

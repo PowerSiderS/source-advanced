@@ -74,9 +74,10 @@ void CHudProgressBar::Paint()
 	int xOffset=0;
 	int yOffset=0;
 	
-	Color clr = m_clrProgress;
+	Color clr = gHUD.ApplyHudColor( m_clrProgress );
+	int nAlphaScale = gHUD.IsCustomHudColorEnabled() ? clr.a() : 255;
 
-	clr[3] = 160;
+	clr[3] = ( 160 * nAlphaScale ) / 255;
 	vgui::surface()->DrawSetColor( clr );
 	vgui::surface()->DrawOutlinedRect( xOffset, yOffset, xOffset+wide, yOffset+tall );
 
@@ -86,7 +87,7 @@ void CHudProgressBar::Paint()
 		float percent = (pPlayer->m_flSimulationTime - pPlayer->m_flProgressBarStartTime) / (float)pPlayer->m_iProgressBarDuration;
 		percent = clamp( percent, 0, 1 );
 		
-		clr[3] = 240;
+		clr[3] = ( 240 * nAlphaScale ) / 255;
 		vgui::surface()->DrawSetColor( clr );
 		vgui::surface()->DrawFilledRect( xOffset+2, yOffset+2, xOffset+(int)(percent*wide)-2, yOffset+tall-2 );
 	}

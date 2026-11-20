@@ -156,7 +156,7 @@ CColorXYPreview::CColorXYPreview( vgui::Panel *pParent, const char *pName ) : Ba
 	SetMode( COLOR_TYPE_HSV, CHANNEL_HUE );
 	SetMouseInputEnabled( true );
 	m_hPickerCursor = surface()->CreateCursorFromFile( "resource/colorpicker.cur" );
-	SetCursor( m_hPickerCursor );
+	SetCursor( m_hPickerCursor != dc_none ? m_hPickerCursor : dc_crosshair );
 	m_bDraggingMouse = false;
 }
 
@@ -718,6 +718,7 @@ CColorPickerPanel::CColorPickerPanel( vgui::Panel *pParent, const char *pName ) 
 	m_pColorXYPreview = new CColorXYPreview( this, "ColorXYPreview" );
 	m_pColorZPreview = new CColorZPreview( this, "ColorZPreview" );
 	m_pColorXYPreview->AddActionSignalTarget( this );
+	m_pColorZPreview->AddActionSignalTarget( this );
 
 	m_pHueRadio = new RadioButton( this, "HueRadio", "H" );
 	m_pSaturationRadio = new RadioButton( this, "SaturationRadio", "S" );
@@ -1081,6 +1082,7 @@ void CColorPickerFrame::DoModal( Color initialColor, KeyValues *pContextKeys )
 	m_pPicker->SetInitialColor( initialColor );
 	m_pContextKeys = pContextKeys;
 
+	MoveToCenterOfScreen();
 	BaseClass::DoModal();
 }
 
@@ -1249,7 +1251,8 @@ void CColorPickerButton::SetColor( int r, int g, int b, int a )
 //-----------------------------------------------------------------------------
 void CColorPickerButton::UpdateButtonColor()
 {
-	SetDefaultColor( m_CurrentColor, m_CurrentColor );
-	SetArmedColor( m_CurrentColor, m_CurrentColor );
-	SetDepressedColor( m_CurrentColor, m_CurrentColor );
+	Color swatch( m_CurrentColor.r(), m_CurrentColor.g(), m_CurrentColor.b(), 255 );
+	SetDefaultColor( swatch, swatch );
+	SetArmedColor( swatch, swatch );
+	SetDepressedColor( swatch, swatch );
 }

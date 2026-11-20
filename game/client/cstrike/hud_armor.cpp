@@ -101,24 +101,36 @@ void CHudArmor::Paint()
 	C_CSPlayer *pPlayer = C_CSPlayer::GetLocalCSPlayer();
 	if ( pPlayer )
 	{
+		Color origFg = GetFgColor();
+		Color drawFg = gHUD.ApplyHudColor( origFg );
+		if ( gHUD.IsCustomHudColorEnabled() )
+		{
+			SetFgColor( drawFg );
+		}
+
 		if( pPlayer->HasHelmet() && (int)pPlayer->ArmorValue() > 0 )
 		{
 			if( m_pArmor_HelmetIcon )
 			{
-				m_pArmor_HelmetIcon->DrawSelf( icon_xpos, icon_ypos, icon_wide, icon_tall, GetFgColor() );
+				m_pArmor_HelmetIcon->DrawSelf( icon_xpos, icon_ypos, icon_wide, icon_tall, drawFg );
 			}
 		}
 		else
 		{
 			if( m_pArmorIcon )
 			{
-				m_pArmorIcon->DrawSelf( icon_xpos, icon_ypos, icon_wide, icon_tall, GetFgColor() );
+				m_pArmorIcon->DrawSelf( icon_xpos, icon_ypos, icon_wide, icon_tall, drawFg );
 			}
 		}
 
 		SetDisplayValue( (int)pPlayer->ArmorValue() );
 		SetShouldDisplayValue( true );
 		BaseClass::Paint();
+
+		if ( gHUD.IsCustomHudColorEnabled() )
+		{
+			SetFgColor( origFg );
+		}
 	}
 }
 

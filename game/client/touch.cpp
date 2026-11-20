@@ -45,7 +45,19 @@ ConVar touch_config_file( "touch_config_file", "touch.cfg", FCVAR_ARCHIVE, "curr
 ConVar touch_grid_count( "touch_grid_count", "50", FCVAR_ARCHIVE, "touch grid count" );
 ConVar touch_grid_enable( "touch_grid_enable", "1", FCVAR_ARCHIVE, "enable touch grid" );
 ConVar touch_precise_amount( "touch_precise_amount", "0.5", FCVAR_ARCHIVE, "sensitivity multiplier for precise-look" );
+#if !defined( ANDROID ) && !defined( __ANDROID__ )
+static void OnTouchDisabledOnBuyMenuChanged( IConVar *var, const char *pOldValue, float flOldValue )
+{
+	ConVarRef cvar( var );
+	if ( cvar.GetInt() != 0 )
+	{
+		cvar.SetValue( 0 );
+	}
+}
+ConVar touch_disabled_on_buymenu( "touch_disabled_on_buymenu", "0", FCVAR_ARCHIVE, "Disable touch controls while the buy menu is open (Android only).", OnTouchDisabledOnBuyMenuChanged );
+#else
 ConVar touch_disabled_on_buymenu( "touch_disabled_on_buymenu", "0", FCVAR_ARCHIVE, "Disable touch controls while the buy menu is open." );
+#endif
 ConVar touch_button_info( "touch_button_info", "0", FCVAR_ARCHIVE );
 
 #define boundmax( num, high ) ( (num) < (high) ? (num) : (high) )

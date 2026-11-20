@@ -112,6 +112,10 @@ CModOptionsSubGameplay::CModOptionsSubGameplay( vgui::Panel *parent )
 	m_pColoredHud->AddActionSignalTarget( this );
 
 	LoadControlSettings( "Resource/ModOptionsSubGameplay.res" );
+
+#if !defined( ANDROID ) && !defined( __ANDROID__ )
+	m_pDisableTouchOnBuyMenu->SetEnabled( false );
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -201,6 +205,9 @@ void CModOptionsSubGameplay::OnResetData()
 	m_pRadarSquare->Reset();
 	m_pDisplayC4Timer->Reset();
 	m_pDisableTouchOnBuyMenu->Reset();
+#if !defined( ANDROID ) && !defined( __ANDROID__ )
+	m_pDisableTouchOnBuyMenu->SetEnabled( false );
+#endif
 	m_pDrawTracers->Reset();
 	m_pUseNewHeadbob->Reset();
 	m_pColoredHud->Reset();
@@ -232,7 +239,9 @@ void CModOptionsSubGameplay::OnApplyChanges()
 	m_pRadarRotate->ApplyChanges();
 	m_pRadarSquare->ApplyChanges();
 	m_pDisplayC4Timer->ApplyChanges();
+#if defined( ANDROID ) || defined( __ANDROID__ )
 	m_pDisableTouchOnBuyMenu->ApplyChanges();
+#endif
 	m_pDrawTracers->ApplyChanges();
 	m_pUseNewHeadbob->ApplyChanges();
 	m_pColoredHud->ApplyChanges();

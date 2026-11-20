@@ -18,7 +18,7 @@
 #include <intrin.h>
 #elif defined( ANDROID ) || defined( __ANDROID__ )
 #include <jni.h>
-#include <sys/system_properties.h>
+#include <dlfcn.h>
 #include <unistd.h>
 #else
 #include <unistd.h>
@@ -319,15 +319,26 @@ static void BuildAndroidHardwareFingerprint( char *pszOut, size_t nMaxLen )
 		"ro.build.fingerprint",
 	};
 
+	typedef int ( *PFN_SystemPropertyGet )( const char *, char * );
+	void *pLibc = dlopen( "libc.so", RTLD_LAZY );
+	PFN_SystemPropertyGet pfnSysPropGet = pLibc ? (PFN_SystemPropertyGet)dlsym( pLibc, "__system_property_get" ) : NULL;
+
 	V_strncpy( pszOut, "AND_HW", nMaxLen );
-	for ( size_t i = 0; i < sizeof( s_PropNames ) / sizeof( s_PropNames[0] ); ++i )
+	if ( pfnSysPropGet )
 	{
-		char szPropVal[PROP_VALUE_MAX] = { 0 };
-		if ( __system_property_get( s_PropNames[i], szPropVal ) > 0 && V_stricmp( szPropVal, "unknown" ) != 0 )
+		for ( size_t i = 0; i < sizeof( s_PropNames ) / sizeof( s_PropNames[0] ); ++i )
 		{
-			V_strncat( pszOut, "|", nMaxLen );
-			V_strncat( pszOut, szPropVal, nMaxLen );
+			char szPropVal[128] = { 0 };
+			if ( pfnSysPropGet( s_PropNames[i], szPropVal ) > 0 && V_stricmp( szPropVal, "unknown" ) != 0 )
+			{
+				V_strncat( pszOut, "|", nMaxLen );
+				V_strncat( pszOut, szPropVal, nMaxLen );
+			}
 		}
+	}
+	if ( pLibc )
+	{
+		dlclose( pLibc );
 	}
 
 	char szSocSerial[128] = { 0 };

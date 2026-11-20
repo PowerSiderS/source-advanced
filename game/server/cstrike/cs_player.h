@@ -1047,6 +1047,8 @@ private:
     CNetworkArray( bool, m_bPlayerDominatingMe, MAX_PLAYERS+1 );	// array of state per other player whether other players are dominating this player
 	CNetworkVar( bool, m_bIsLookingAtWeapon );
 	CNetworkVar( bool, m_bIsHoldingLookAtWeapon );
+	CNetworkString( m_szInventoryLoadout, MAX_INVENTORY_LOADOUT_LEN );
+	float m_flNextInventorySyncTime;
 
 	float m_flLookWeaponEndTime;
 	//=============================================================================

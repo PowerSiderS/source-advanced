@@ -308,4 +308,6 @@ const char *GetKnifeViewModelForSelection( int nTeam, const char *pszKnifeInput 
 int GetKnifeViewModelCount( void );
 const char *GetKnifeViewModelByIndex( int i );
 
+#define MAX_INVENTORY_LOADOUT_LEN 256
+
 #endif // CS_SHAREDDEFS_H

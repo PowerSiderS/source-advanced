@@ -371,7 +371,8 @@ int C_BaseViewModel::DrawModel( int flags )
 	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
 	C_BaseCombatWeapon *pWeapon = GetOwningWeapon();
 #ifdef CSTRIKE_DLL
-	if ( ( flags & STUDIO_RENDER ) && pPlayer && GetOwner() == pPlayer )
+	C_CSPlayer *pViewPlayer = GetLocalOrInEyeCSPlayer();
+	if ( ( flags & STUDIO_RENDER ) && pViewPlayer && GetOwner() == pViewPlayer )
 	{
 		UpdateAllViewmodelAddons();
 	}
@@ -608,15 +609,16 @@ void C_BaseViewModel::UpdateAllViewmodelAddons( void )
 		return;
 	}
 
-	Inventory_SyncActiveTeamConVars( pPlayer->GetTeamNumber() );
+	const bool bIsLocalOwner = pPlayer->IsLocalPlayer();
+	if ( bIsLocalOwner )
+	{
+		Inventory_SyncActiveTeamConVars( pPlayer->GetTeamNumber() );
+	}
 
 	UpdateViewmodelStickers( this, pPlayer );
 
 	const model_t *pPlayerModel = pPlayer->GetModel();
 	const char *pszPlayerModel = pPlayerModel ? modelinfo->GetModelName( pPlayerModel ) : "";
-	const char *pszGloveCvar = cl_arm_glove.GetString();
-	const char *pszSleeveCvar = cl_arm_sleeve.GetString();
-	int nSkintoneCvar = cl_arm_skintone.GetInt();
 
 	const PlayerViewmodelArmConfig *pConfig = GetPlayerViewmodelArmConfigForPlayerModel( pszPlayerModel );
 	if ( !pConfig )
@@ -624,40 +626,53 @@ void C_BaseViewModel::UpdateAllViewmodelAddons( void )
 
 	const char *pszGloveModel = pConfig->szAssociatedGloveModel;
 	const char *pszOverrideTex = "";
-	if ( pszGloveCvar && pszGloveCvar[0] != '\0' && V_strcmp( pszGloveCvar, "-1" ) != 0 )
-	{
-		ArmGloveSelection gloveSelection;
-		if ( ResolveViewmodelGloveSelection( pszGloveCvar, GetArmGloveSkinConVarValue, gloveSelection ) && gloveSelection.pszModelPath )
-		{
-			pszGloveModel = gloveSelection.pszModelPath;
-			if ( gloveSelection.pszOverrideBaseTexture )
-			{
-				pszOverrideTex = gloveSelection.pszOverrideBaseTexture;
-			}
-		}
-	}
-
 	char szResolvedSleeve[MAX_PATH];
 	const char *pszSleeveModel = pConfig->szAssociatedSleeveModel;
 	bool bHasExplicitSleeve = false;
-	if ( pszSleeveCvar && pszSleeveCvar[0] != '\0' && V_strcmp( pszSleeveCvar, "-1" ) != 0 )
+	int nDesiredSkintone = pConfig->iSkintoneIndex;
+
+	if ( bIsLocalOwner )
 	{
-		if ( !V_stricmp( pszSleeveCvar, "none" ) || !V_stricmp( pszSleeveCvar, "off" ) || !V_stricmp( pszSleeveCvar, "0" ) )
+		const char *pszGloveCvar = cl_arm_glove.GetString();
+		const char *pszSleeveCvar = cl_arm_sleeve.GetString();
+		int nSkintoneCvar = cl_arm_skintone.GetInt();
+
+		if ( pszGloveCvar && pszGloveCvar[0] != '\0' && V_strcmp( pszGloveCvar, "-1" ) != 0 )
 		{
-			pszSleeveModel = "";
-		}
-		else
-		{
-			const char *pszResolved = ResolveViewmodelSleeveModelPath( pszSleeveCvar, szResolvedSleeve, sizeof( szResolvedSleeve ) );
-			if ( pszResolved )
+			ArmGloveSelection gloveSelection;
+			if ( ResolveViewmodelGloveSelection( pszGloveCvar, GetArmGloveSkinConVarValue, gloveSelection ) && gloveSelection.pszModelPath )
 			{
-				pszSleeveModel = pszResolved;
-				bHasExplicitSleeve = true;
+				pszGloveModel = gloveSelection.pszModelPath;
+				if ( gloveSelection.pszOverrideBaseTexture )
+				{
+					pszOverrideTex = gloveSelection.pszOverrideBaseTexture;
+				}
 			}
 		}
-	}
 
-	int nDesiredSkintone = ( nSkintoneCvar >= 0 ) ? nSkintoneCvar : pConfig->iSkintoneIndex;
+		if ( pszSleeveCvar && pszSleeveCvar[0] != '\0' && V_strcmp( pszSleeveCvar, "-1" ) != 0 )
+		{
+			if ( !V_stricmp( pszSleeveCvar, "none" ) || !V_stricmp( pszSleeveCvar, "off" ) || !V_stricmp( pszSleeveCvar, "0" ) )
+			{
+				pszSleeveModel = "";
+			}
+			else
+			{
+				const char *pszResolved = ResolveViewmodelSleeveModelPath( pszSleeveCvar, szResolvedSleeve, sizeof( szResolvedSleeve ) );
+				if ( pszResolved )
+				{
+					pszSleeveModel = pszResolved;
+					bHasExplicitSleeve = true;
+				}
+			}
+		}
+
+		nDesiredSkintone = ( nSkintoneCvar >= 0 ) ? nSkintoneCvar : pConfig->iSkintoneIndex;
+	}
+	else
+	{
+		Inventory_ResolveRemotePlayerArms( pPlayer, pConfig, pszGloveModel, pszOverrideTex, pszSleeveModel, bHasExplicitSleeve, nDesiredSkintone );
+	}
 
 	bool bConfigChanged =
 		( pPlayer->m_pViewmodelArmConfig != pConfig ) ||
@@ -982,6 +997,7 @@ struct ViewmodelStickerSlotState_t
 	CHandle<C_BaseViewModel> hViewModel;
 	int nWeaponIdx;
 	int nLastTeam;
+	int nLastOwnerEntIndex;
 	unsigned int nLastLoadoutRev;
 	CHandle<C_ViewmodelAttachmentModel> hStickers[INV_MAX_STICKER_SLOTS];
 };
@@ -1016,6 +1032,7 @@ static int FindOrCreateStickerStateIndex( C_BaseViewModel *pVM, bool bCreate )
 	s_vecViewmodelStickers[idx].hViewModel = pVM;
 	s_vecViewmodelStickers[idx].nWeaponIdx = -1;
 	s_vecViewmodelStickers[idx].nLastTeam = -1;
+	s_vecViewmodelStickers[idx].nLastOwnerEntIndex = -1;
 	s_vecViewmodelStickers[idx].nLastLoadoutRev = 0;
 	return idx;
 }
@@ -1099,17 +1116,19 @@ static void UpdateViewmodelStickers( C_BaseViewModel *pVM, C_CSPlayer *pPlayer )
 	}
 
 	int nTeam = pPlayer->GetTeamNumber();
-	unsigned int nLoadoutRev = Inventory_GetLoadoutRevision();
+	int nOwnerEntIndex = pPlayer->entindex();
+	unsigned int nLoadoutRev = Inventory_GetLoadoutRevisionForPlayer( pPlayer );
 	int idx = FindOrCreateStickerStateIndex( pVM, false );
 	if ( idx != -1 &&
 		 s_vecViewmodelStickers[idx].nWeaponIdx == nCurWep &&
 		 s_vecViewmodelStickers[idx].nLastTeam == nTeam &&
+		 s_vecViewmodelStickers[idx].nLastOwnerEntIndex == nOwnerEntIndex &&
 		 s_vecViewmodelStickers[idx].nLastLoadoutRev == nLoadoutRev )
 	{
 		return;
 	}
 
-	if ( idx != -1 && s_vecViewmodelStickers[idx].nWeaponIdx != nCurWep )
+	if ( idx != -1 && ( s_vecViewmodelStickers[idx].nWeaponIdx != nCurWep || s_vecViewmodelStickers[idx].nLastOwnerEntIndex != nOwnerEntIndex ) )
 	{
 		RemoveViewmodelStickers( pVM );
 		idx = -1;
@@ -1141,6 +1160,7 @@ static void UpdateViewmodelStickers( C_BaseViewModel *pVM, C_CSPlayer *pPlayer )
 		s_vecViewmodelStickers[idx].nWeaponIdx = nCurWep;
 	}
 	s_vecViewmodelStickers[idx].nLastTeam = nTeam;
+	s_vecViewmodelStickers[idx].nLastOwnerEntIndex = nOwnerEntIndex;
 	s_vecViewmodelStickers[idx].nLastLoadoutRev = nLoadoutRev;
 
 	for ( int s = 0; s < INV_MAX_STICKER_SLOTS; ++s )
@@ -1449,11 +1469,12 @@ public:
 			return;
 
 		char szChoice[128];
-		if ( Inventory_ResolveWeaponStickerChoiceForRenderable( m_nWeaponIdx, pRenderable, m_nSlot, szChoice, sizeof( szChoice ) ) )
+		bool bResolved = Inventory_ResolveWeaponStickerChoiceForRenderable( m_nWeaponIdx, pRenderable, m_nSlot, szChoice, sizeof( szChoice ) );
+		if ( bResolved )
 		{
 			UpdateOverrideFromChoice( szChoice );
 		}
-		ApplyTargetTexture( m_pOverrideTexture != NULL );
+		ApplyTargetTexture( bResolved && m_pOverrideTexture != NULL );
 	}
 
 protected:

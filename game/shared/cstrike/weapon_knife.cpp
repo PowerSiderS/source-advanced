@@ -10,6 +10,7 @@
 
 #if defined( CLIENT_DLL )
 	#include "c_cs_player.h"
+	#include "cs_inventory.h"
 #else
 	#include "cs_player.h"
 	#include "ilagcompensationmanager.h"
@@ -147,9 +148,16 @@ const char *CKnife::GetViewModel( int viewmodelindex ) const
 	const char *pszKnifeChoice = "";
 
 #if defined( CLIENT_DLL )
-	if ( pOwner && pOwner->IsLocalPlayer() )
+	if ( pOwner )
 	{
-		pszKnifeChoice = cl_knife.GetString();
+		if ( pOwner->IsLocalPlayer() )
+		{
+			pszKnifeChoice = cl_knife.GetString();
+		}
+		else if ( C_CSPlayer *pCSOwner = ToCSPlayer( pOwner ) )
+		{
+			pszKnifeChoice = Inventory_GetPlayerKnifeKey( pCSOwner );
+		}
 	}
 #else
 	if ( pOwner && !pOwner->IsBot() && pOwner->IsNetClient() )

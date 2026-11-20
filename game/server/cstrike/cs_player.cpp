@@ -373,6 +373,7 @@ IMPLEMENT_SERVERCLASS_ST( CCSPlayer, DT_CSPlayer )
 	SendPropBool( SENDINFO( m_bHasNightVision ) ),
 	SendPropBool( SENDINFO( m_bIsLookingAtWeapon ) ),
 	SendPropBool( SENDINFO( m_bIsHoldingLookAtWeapon ) ),
+	SendPropString( SENDINFO( m_szInventoryLoadout ) ),
 
 	//=============================================================================
 	// HPE_BEGIN:
@@ -490,6 +491,8 @@ CCSPlayer::CCSPlayer()
 
 	m_szNewName[0] = 0;
 	m_szClanTag[0] = 0;
+	m_szInventoryLoadout.GetForModify()[0] = '\0';
+	m_flNextInventorySyncTime = 0.0f;
 
 	for ( int i=0; i<NAME_CHANGE_HISTORY_SIZE; i++ )
 	{
@@ -4811,6 +4814,49 @@ bool CCSPlayer::ClientCommand( const CCommand &args )
    m_bIsHoldingLookAtWeapon = false;
 
   return true;
+ }
+ else if ( FStrEq( pcmd, "cs_inv_sync" ) )
+ {
+	if ( gpGlobals->curtime >= m_flNextInventorySyncTime )
+	{
+		m_flNextInventorySyncTime = gpGlobals->curtime + 0.25f;
+		const char *pszPayload = ( args.ArgC() >= 2 ) ? args[1] : "";
+		int nLen = Q_strlen( pszPayload );
+		bool bValid = ( nLen >= 0 && nLen < MAX_INVENTORY_LOADOUT_LEN );
+		for ( int i = 0; bValid && i < nLen; ++i )
+		{
+			unsigned char c = (unsigned char)pszPayload[i];
+			if ( !( ( c >= 'A' && c <= 'Z' ) || ( c >= 'a' && c <= 'z' ) ||
+					( c >= '0' && c <= '9' ) || c == '+' || c == '/' ||
+					c == '-' || c == '_' || c == '=' ) )
+			{
+				bValid = false;
+			}
+		}
+
+		if ( bValid && Q_strcmp( m_szInventoryLoadout.Get(), pszPayload ) != 0 )
+		{
+			Q_strncpy( m_szInventoryLoadout.GetForModify(), pszPayload, MAX_INVENTORY_LOADOUT_LEN );
+			m_szInventoryLoadout.GetForModify()[MAX_INVENTORY_LOADOUT_LEN - 1] = '\0';
+		}
+
+		// If the player is currently holding their knife and changed cl_knife, update the viewmodel immediately
+		if ( IsAlive() )
+		{
+			CWeaponCSBase *pActiveWpn = GetActiveCSWeapon();
+			if ( pActiveWpn && pActiveWpn->IsA( WEAPON_KNIFE ) )
+			{
+				const char *pszDesiredVM = pActiveWpn->GetViewModel();
+				CBaseViewModel *pVM = GetViewModel();
+				if ( pszDesiredVM && pszDesiredVM[0] && pVM && Q_stricmp( STRING( pVM->GetModelName() ), pszDesiredVM ) != 0 )
+				{
+					pActiveWpn->SetModel( pszDesiredVM );
+					pVM->SetWeaponModel( pszDesiredVM, pActiveWpn );
+				}
+			}
+		}
+	}
+	return true;
  }
 
  return BaseClass::ClientCommand( args );

@@ -46,6 +46,7 @@
 #include "steam/steam_api.h"
 
 #include "cs_blackmarket.h"				// for vest/helmet prices
+#include "cs_inventory.h"
 
 #if defined( CCSPlayer )
 	#undef CCSPlayer
@@ -805,6 +806,7 @@ IMPLEMENT_CLIENTCLASS_DT( C_CSPlayer, DT_CSPlayer, CCSPlayer )
 	RecvPropInt( RECVINFO( m_cycleLatch ), 0, &C_CSPlayer::RecvProxy_CycleLatch ),
 		RecvPropBool( RECVINFO( m_bIsLookingAtWeapon ) ),
 	RecvPropBool( RECVINFO( m_bIsHoldingLookAtWeapon ) ),
+	RecvPropString( RECVINFO( m_szInventoryLoadout ) ),
 END_RECV_TABLE()
 
 
@@ -841,6 +843,9 @@ C_CSPlayer::C_CSPlayer() :
 	view->SetScreenOverlayMaterial( NULL );
 
     m_bPlayingFreezeCamSound = false;
+	m_szInventoryLoadout[0] = '\0';
+	m_szLastInventoryLoadout[0] = '\0';
+	m_nInventoryLoadoutRev = 0;
 }
 
 
@@ -1452,6 +1457,19 @@ void C_CSPlayer::PostDataUpdate( DataUpdateType_t updateType )
 	SetNetworkAngles( GetLocalAngles() );
 
 	BaseClass::PostDataUpdate( updateType );
+
+	if ( Q_strcmp( m_szInventoryLoadout, m_szLastInventoryLoadout ) != 0 )
+	{
+		Q_strncpy( m_szLastInventoryLoadout, m_szInventoryLoadout, sizeof( m_szLastInventoryLoadout ) );
+		++m_nInventoryLoadoutRev;
+		Inventory_InvalidatePlayerLoadoutCache( entindex() );
+	}
+
+	if ( IsLocalPlayer() )
+	{
+		Inventory_SyncActiveTeamConVars( GetTeamNumber() );
+		Inventory_SyncNetworkLoadoutIfNeeded();
+	}
 }
 
 //-----------------------------------------------------------------------------

@@ -14,6 +14,7 @@
 
 class C_BaseViewModel;
 class C_CSPlayer;
+struct PlayerViewmodelArmConfig;
 
 enum EInventoryTeam
 {
@@ -256,6 +257,13 @@ void Inventory_EnsureLoaded();
 void Inventory_SaveLoadout();
 void Inventory_SyncActiveTeamConVars( int nTeamNumber );
 unsigned int Inventory_GetLoadoutRevision();
+unsigned int Inventory_GetLoadoutRevisionForPlayer( C_CSPlayer *pPlayer );
+void Inventory_SyncNetworkLoadoutIfNeeded();
+void Inventory_InvalidatePlayerLoadoutCache( int nEntIndex );
+const char *Inventory_GetPlayerKnifeKey( C_CSPlayer *pPlayer );
+bool Inventory_ResolveRemotePlayerArms( C_CSPlayer *pPlayer, const PlayerViewmodelArmConfig *pConfig,
+	const char *&outGloveModel, const char *&outGloveOverrideTex,
+	const char *&outSleeveModel, bool &outHasExplicitSleeve, int &outDesiredSkintone );
 void Inventory_PrecacheEquippedAssets();
 void Inventory_ReleasePrecachedAssets();
 

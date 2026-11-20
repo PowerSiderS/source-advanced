@@ -224,6 +224,9 @@ public:
 
 	const PlayerViewmodelArmConfig *m_pViewmodelArmConfig;
 
+	const char *GetInventoryLoadoutPayload( void ) const { return m_szInventoryLoadout; }
+	unsigned int GetInventoryLoadoutRevision( void ) const { return m_nInventoryLoadoutRev; }
+
 public:
 
 	ICSPlayerAnimState *m_PlayerAnimState;
@@ -398,6 +401,9 @@ private:
 
 		CNetworkVar( bool, m_bIsLookingAtWeapon );
 	CNetworkVar( bool, m_bIsHoldingLookAtWeapon );
+	char m_szInventoryLoadout[MAX_INVENTORY_LOADOUT_LEN];
+	char m_szLastInventoryLoadout[MAX_INVENTORY_LOADOUT_LEN];
+	unsigned int m_nInventoryLoadoutRev;
     //=============================================================================
     // HPE_END
     //=============================================================================

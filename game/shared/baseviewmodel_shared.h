@@ -241,6 +241,7 @@ public:
 	bool InitializeAsClientEntity( const char *pszModelName, RenderGroup_t renderGroup );
 	bool InitializeArmModel( const char *pszModelName, int nSkintoneIndex, bool bHideBareArms, const char *pszOverrideBaseTexture = NULL );
 	void SetViewmodel( C_BaseViewModel *pVM );
+	C_BaseViewModel *GetViewmodel( void ) const { return m_hViewmodel.Get(); }
 	void SetOverrideBaseTexture( const char *pszTexturePath );
 	ITexture *GetOverrideBaseTexture( void ) const { return m_pOverrideBaseTexture; }
 	virtual CStudioHdr *OnNewModel( void );

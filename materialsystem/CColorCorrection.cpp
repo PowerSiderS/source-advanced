@@ -202,7 +202,7 @@ void CColorCorrectionSystem::Init()
 	m_DefaultColorCorrectionHandle = (ColorCorrectionHandle_t)-1;
 	m_UnnamedColorCorrectionHandle = GetLookupHandle( "unnamed" );
 	m_DefaultColorCorrectionWeight = 0.0f;
-	m_bEnabled = true;
+	m_bEnabled = false;
 
 	MaterialSystem()->AddReleaseFunc( ReleaseColorCorrection );
 	MaterialSystem()->AddRestoreFunc( RestoreColorCorrection );

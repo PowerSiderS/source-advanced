@@ -4337,6 +4337,10 @@ bool CMaterialSystem::GetRecommendedConfigurationInfo( int nDXLevel, KeyValues *
 	MaterialLock_t hLock = Lock();
 	bool bResult = g_pShaderDeviceMgr->GetRecommendedConfigurationInfo( m_nAdapter, nDXLevel, pKeyValues );
 	Unlock( hLock );
+	if ( bResult && pKeyValues )
+	{
+		pKeyValues->SetInt( "ConVar.mat_colorcorrection", 0 );
+	}
 	return bResult;
 }
 

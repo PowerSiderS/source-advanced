@@ -264,7 +264,7 @@ jobs:
 
   build-linux-dedicated:
     if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.target == 'all' || github.event.inputs.target == 'linux-dedicated' }}
-    name: Build Dedicated Server for linux-amd64
+    name: Build Dedicated Server for linux-i386
     runs-on: ubuntu-latest
 
     steps:
@@ -272,6 +272,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          submodules: recursive
 
       - name: Install dependencies
         run: |
@@ -294,12 +295,12 @@ jobs:
             libjpeg-dev libjpeg-dev:i386 \
             libpng-dev libpng-dev:i386
 
-      - name: Build and install Opus with custom modes
+      - name: Build and install Opus with custom modes (32-bit)
         run: |
           git clone --recursive --depth 1 https://github.com/xiph/opus /tmp/opus
           cd /tmp/opus
           ./autogen.sh
-          ./configure --enable-custom-modes --prefix=/usr --libdir=/usr/lib/x86_64-linux-gnu
+          CC="gcc -m32" CFLAGS="-m32" LDFLAGS="-m32" ./configure --host=i686-linux-gnu --enable-custom-modes --prefix=/usr --libdir=/usr/lib/i386-linux-gnu
           make -j$(nproc)
           sudo make install
           sudo ldconfig
@@ -310,7 +311,8 @@ jobs:
 
       - name: Configure build with Waf
         run: |
-          python3 waf configure -T release --build-games=cstrike -d --disable-warns --enable-opus
+          PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig:/usr/share/pkgconfig \
+          python3 waf configure -T release -4 --build-games=cstrike -d --disable-warns --enable-opus
 
       - name: Build project
         run: |
@@ -324,11 +326,11 @@ jobs:
           find build -type f -name "*.so" -not -name "libserver.so" -exec cp {} output/server/bin/ \;
           find build -type f -name "libserver.so" -exec cp {} output/server/cstrike/bin/ \;
           find build -type f -name "dedicated_launcher" -exec cp {} output/server/ \;
-          cp -P /usr/lib/x86_64-linux-gnu/libopus.so* output/server/bin/ 2>/dev/null || true
+          cp -P /usr/lib/i386-linux-gnu/libopus.so* output/server/bin/ 2>/dev/null || true
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cstrike-dedicated-linux-amd64
+          name: cstrike-dedicated-linux-i386
           path: ./output/server/
           if-no-files-found: error
